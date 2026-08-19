@@ -7,8 +7,8 @@ from preprocessing import load_image, preprocess_image
 
 # Root folder containing all dataset material folders.
 # This lets you process every image in the dataset without editing the path each time.
-DATASET_ROOT = os.path.join("dataset")
-OUTPUT_ROOT = os.path.join("outputs", "previews")
+DATASET_ROOT = os.path.join("datasets")
+OUTPUT_ROOT = os.path.join("outputs", "preprocessing_preview")
 
 # Supported image extensions.
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}

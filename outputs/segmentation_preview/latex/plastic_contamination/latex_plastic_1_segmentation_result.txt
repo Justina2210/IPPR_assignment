@@ -1,0 +1,3 @@
+glove_area=301103
+cuff_detected=False
+cuff_y=None

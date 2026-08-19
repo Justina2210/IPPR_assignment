@@ -6,7 +6,7 @@ from preprocessing import load_image, preprocess_image
 from segmentation import segment_glove
 
 
-DATASET_ROOT = os.path.join("dataset")
+DATASET_ROOT = os.path.join("datasets")
 OUTPUT_ROOT = os.path.join("outputs", "segmentation_preview")
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
