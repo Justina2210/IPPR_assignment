@@ -1,0 +1,7 @@
+material,defect_name,image_path,status,detected,detection_score,algorithm,bounding_box,glove_area,defect_area_pct,processing_time_ms,error
+cotton,oversize,datasets\cotton\oversize\cotton_oversize_1.jpeg,success,True,0.5679045403551416,Explainable global fit geometry + loose-fold evidence,"(187, 654, 337, 346)",248734,2.62,360.8705997467041,
+cotton,oversize,datasets\cotton\oversize\cotton_oversize_2.jpeg,success,True,0.5419523087645546,Explainable global fit geometry + loose-fold evidence,"(82, 444, 499, 254)",237457,3.8,228.06406021118164,
+latex,oversize,datasets\latex\oversize\latex_oversize_1.jpeg,success,True,0.512087871010524,Explainable global fit geometry + loose-fold evidence,"(208, 249, 398, 751)",248483,7.2,205.31344413757324,
+latex,oversize,datasets\latex\oversize\latex_oversize_2.jpeg,success,True,0.6884316694309187,Explainable global fit geometry + loose-fold evidence,"(108, 117, 497, 883)",306370,13.37,219.42782402038574,
+nitrile,oversize,datasets\nitrile\oversize\nitrile_oversize_1.jpeg,success,True,0.786224632101861,Explainable global fit geometry + loose-fold evidence,"(79, 151, 554, 474)",156416,12.55,205.73973655700684,
+nitrile,oversize,datasets\nitrile\oversize\nitrile_oversize_2.jpeg,success,True,0.8024298453569131,Explainable global fit geometry + loose-fold evidence,"(110, 133, 508, 867)",312077,14.83,203.13143730163574,

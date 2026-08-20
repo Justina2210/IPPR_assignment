@@ -1,0 +1,86 @@
+{
+  "overall": {
+    "total_images": 6,
+    "detected": 6,
+    "detection_rate_pct": 100.0,
+    "segmentation_failures": 0,
+    "segmentation_failure_rate_pct": 0.0,
+    "detector_failures": 0,
+    "detector_failure_rate_pct": 0.0,
+    "not_implemented": 0,
+    "mean_detection_score": 0.65,
+    "stdev_detection_score": 0.116,
+    "mean_score_when_detected": 0.65,
+    "mean_processing_time_ms": 237.1,
+    "mean_defect_area_pct": 9.06,
+    "algorithm": "Explainable global fit geometry + loose-fold evidence"
+  },
+  "by_defect": {
+    "oversize": {
+      "total_images": 6,
+      "detected": 6,
+      "detection_rate_pct": 100.0,
+      "segmentation_failures": 0,
+      "segmentation_failure_rate_pct": 0.0,
+      "detector_failures": 0,
+      "detector_failure_rate_pct": 0.0,
+      "not_implemented": 0,
+      "mean_detection_score": 0.65,
+      "stdev_detection_score": 0.116,
+      "mean_score_when_detected": 0.65,
+      "mean_processing_time_ms": 237.1,
+      "mean_defect_area_pct": 9.06,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence"
+    }
+  },
+  "by_material": {
+    "cotton": {
+      "total_images": 2,
+      "detected": 2,
+      "detection_rate_pct": 100.0,
+      "segmentation_failures": 0,
+      "segmentation_failure_rate_pct": 0.0,
+      "detector_failures": 0,
+      "detector_failure_rate_pct": 0.0,
+      "not_implemented": 0,
+      "mean_detection_score": 0.555,
+      "stdev_detection_score": 0.013,
+      "mean_score_when_detected": 0.555,
+      "mean_processing_time_ms": 294.5,
+      "mean_defect_area_pct": 3.21,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence"
+    },
+    "latex": {
+      "total_images": 2,
+      "detected": 2,
+      "detection_rate_pct": 100.0,
+      "segmentation_failures": 0,
+      "segmentation_failure_rate_pct": 0.0,
+      "detector_failures": 0,
+      "detector_failure_rate_pct": 0.0,
+      "not_implemented": 0,
+      "mean_detection_score": 0.6,
+      "stdev_detection_score": 0.088,
+      "mean_score_when_detected": 0.6,
+      "mean_processing_time_ms": 212.4,
+      "mean_defect_area_pct": 10.29,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence"
+    },
+    "nitrile": {
+      "total_images": 2,
+      "detected": 2,
+      "detection_rate_pct": 100.0,
+      "segmentation_failures": 0,
+      "segmentation_failure_rate_pct": 0.0,
+      "detector_failures": 0,
+      "detector_failure_rate_pct": 0.0,
+      "not_implemented": 0,
+      "mean_detection_score": 0.794,
+      "stdev_detection_score": 0.008,
+      "mean_score_when_detected": 0.794,
+      "mean_processing_time_ms": 204.4,
+      "mean_defect_area_pct": 13.69,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence"
+    }
+  }
+}
