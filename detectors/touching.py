@@ -8,13 +8,15 @@ Designed to consume the shared ``processed`` and ``segmentation`` dictionaries.
 import cv2
 import numpy as np
 
+from detectors.finger_not_enough import locate_peaks
+
 
 def _empty_result():
     return {
         "defect_name": "touching",
         "detected": False,
         "detection_score": 0.0,
-        "algorithm": "finger-valley depth + convexity-defect silhouette analysis",
+        "algorithm": "adjacent fingertip shallow-gap + local contact-notch analysis",
         "bounding_box": None,
         "mask": None,
         "measurements": {},
@@ -24,6 +26,117 @@ def _empty_result():
 def _largest_contour(mask):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     return max(contours, key=cv2.contourArea) if contours else None
+
+
+def _column_top(mask, left, right):
+    """Return topmost foreground y for each usable column in [left, right]."""
+    h, w = mask.shape[:2]
+    values = []
+    for x in range(max(0, int(left)), min(w, int(right) + 1)):
+        ys = np.flatnonzero(mask[:, x] > 0)
+        if ys.size:
+            values.append(float(ys[0]))
+    return values
+
+
+def _find_touching_pair(mask, peaks, glove_h, glove_w):
+    """Find adjacent fingertip peaks whose separating notch is too shallow."""
+    ordered = sorted(peaks, key=lambda p: p[0])
+    gaps = []
+    for left, right in zip(ordered, ordered[1:]):
+        spacing = float(right[0] - left[0])
+        if not (0.035 * glove_w <= spacing <= 0.32 * glove_w):
+            continue
+
+        # Trim the fingertip centres slightly. This prevents either rounded tip
+        # itself from dominating the measurement while retaining the seam/notch.
+        trim = max(1, int(0.16 * spacing))
+        tops = _column_top(mask, left[0] + trim, right[0] - trim)
+        if len(tops) < 3:
+            continue
+
+        tip_y = 0.5 * (left[1] + right[1])
+        valley_y = float(np.percentile(tops, 85))
+        depth = max(0.0, valley_y - tip_y)
+        gaps.append({
+            "left": left,
+            "right": right,
+            "valley_y": valley_y,
+            "depth": depth,
+            "depth_ratio": depth / max(glove_h, 1),
+        })
+
+    if not gaps:
+        return None, gaps
+
+    depths = [g["depth"] for g in gaps]
+    typical_depth = float(np.median(depths))
+    candidate = min(gaps, key=lambda g: g["depth_ratio"])
+    candidate["relative_depth"] = candidate["depth"] / max(typical_depth, 1.0)
+
+    # A genuine touching seam is shallow in absolute terms and also clearly
+    # shallower than the glove's other interdigital valleys.
+    if candidate["depth_ratio"] <= 0.115 and candidate["relative_depth"] <= 0.62:
+        return candidate, gaps
+    return None, gaps
+
+
+def _find_shallow_contact(contour, defects, x0, y0, glove_h, glove_w):
+    """Locate a missing/shallow interdigital notch on the glove contour.
+
+    A touching or overlapping pair often produces only one fingertip peak, so
+    there is no adjacent peak pair for ``_find_touching_pair`` to examine.  The
+    small notch at the end of the contact seam is still represented as a
+    convexity defect, however.  Keep only compact upper-hand notches; this
+    rejects the large palm/thumb and wrist concavities.
+    """
+    if defects is None:
+        return None
+
+    candidates = []
+    for d in defects[:, 0]:
+        s, e, f, depth_raw = map(int, d)
+        start = contour[s][0].astype(np.float32)
+        end = contour[e][0].astype(np.float32)
+        far = contour[f][0].astype(np.float32)
+        depth = depth_raw / 256.0
+        chord = float(np.linalg.norm(end - start))
+
+        fx, fy = float(far[0]), float(far[1])
+        if not (x0 + 0.08 * glove_w <= fx <= x0 + 0.92 * glove_w):
+            continue
+        if not (y0 + 0.02 * glove_h <= fy <= y0 + 0.60 * glove_h):
+            continue
+        if not (0.004 * glove_w <= depth <= 0.065 * glove_w):
+            continue
+        if not (0.045 * glove_w <= chord <= 0.42 * glove_w):
+            continue
+
+        # Prefer a definite notch over tiny outline noise, then prefer notches
+        # higher on the fingers over creases close to the palm.
+        depth_strength = min(depth / max(0.035 * glove_w, 1.0), 1.0)
+        height_strength = 1.0 - (fy - y0) / max(0.60 * glove_h, 1.0)
+        candidates.append((0.65 * depth_strength + 0.35 * height_strength,
+                           (int(round(fx)), int(round(fy))), depth))
+
+    return max(candidates, key=lambda item: item[0]) if candidates else None
+
+
+def _contact_region(mask, centre, glove_h, glove_w):
+    """Return a small circular mask and box centred on the contact point."""
+    cx, cy = centre
+    radius = max(7, int(round(0.055 * glove_w)))
+    region = np.zeros_like(mask)
+    cv2.circle(region, (int(cx), int(cy)), radius, 255, -1)
+
+    # Include a narrow amount of material on both sides of the seam.  Do not
+    # expand to the whole finger or upper hand.
+    region = cv2.bitwise_and(region, mask)
+    x = max(0, int(cx) - radius)
+    y = max(0, int(cy) - radius)
+    x2 = min(mask.shape[1] - 1, int(cx) + radius)
+    y2 = min(mask.shape[0] - 1, int(cy) + radius)
+    return region, (x, y, x2 - x + 1, y2 - y + 1), radius
 
 
 def detect_touching(processed: dict, segmentation: dict) -> dict:
@@ -87,13 +200,17 @@ def detect_touching(processed: dict, segmentation: dict) -> dict:
             if depth >= deep_threshold:
                 deep_defects.append((depth, far))
 
-    # Four separated fingers normally provide ~3 strong interdigital valleys.
-    # Fewer strong valleys increases touching likelihood. Keep scoring smooth
-    # because glove pose/material can hide one valley even in a good sample.
+    shallow_contact = _find_shallow_contact(
+        contour, defects, x0, y0, glove_h, glove_w
+    )
+
+    # Five separated digits provide four interdigital valleys, including the
+    # thumb/index separation. The old expected count of three was the main false
+    # negative: one touching pair could erase a valley and still appear normal.
     deep_count = len(deep_defects)
     moderate_count = len(moderate_defects)
-    missing_deep = np.clip((3.0 - deep_count) / 3.0, 0.0, 1.0)
-    missing_moderate = np.clip((3.0 - moderate_count) / 3.0, 0.0, 1.0)
+    missing_deep = np.clip((4.0 - deep_count) / 2.0, 0.0, 1.0)
+    missing_moderate = np.clip((4.0 - moderate_count) / 2.0, 0.0, 1.0)
 
     # Convex-hull fill ratio becomes higher when gaps between fingers disappear.
     contour_area = float(cv2.contourArea(contour))
@@ -102,21 +219,42 @@ def detect_touching(processed: dict, segmentation: dict) -> dict:
     solidity = contour_area / hull_area
     solidity_signal = np.clip((solidity - 0.70) / 0.22, 0.0, 1.0)
 
-    score = float(np.clip(0.55 * missing_deep + 0.25 * missing_moderate + 0.20 * solidity_signal, 0.0, 1.0))
+    peaks = locate_peaks(mask)
+    touching_pair, pair_gaps = _find_touching_pair(mask, peaks, glove_h, glove_w)
+    pair_signal = 0.0
+    if touching_pair is not None:
+        absolute_signal = np.clip((0.115 - touching_pair["depth_ratio"]) / 0.10, 0.0, 1.0)
+        relative_signal = np.clip((0.62 - touching_pair["relative_depth"]) / 0.52, 0.0, 1.0)
+        pair_signal = float(0.55 * absolute_signal + 0.45 * relative_signal)
+
+    score = float(np.clip(
+        0.48 * missing_deep + 0.18 * missing_moderate
+        + 0.14 * solidity_signal + 0.45 * pair_signal,
+        0.0, 1.0,
+    ))
+    if touching_pair is not None:
+        score = max(score, 0.72)
     detected = score >= 0.50
 
     defect_mask = np.zeros_like(mask)
     bbox = None
-    if detected:
-        # Localise the likely touching zone. If valleys are missing, highlight the
-        # central finger band rather than incorrectly marking the entire glove.
-        bx = x0 + int(0.12 * glove_w)
-        by = y0 + int(0.04 * glove_h)
-        bw = max(1, int(0.76 * glove_w))
-        bh = max(1, int(0.54 * glove_h))
-        cv2.rectangle(defect_mask, (bx, by), (min(x1, bx + bw), min(y1, by + bh)), 255, -1)
-        defect_mask = cv2.bitwise_and(defect_mask, roi_mask)
-        bbox = (bx, by, min(bw, x1 - bx + 1), min(bh, y1 - by + 1))
+    contact_point = None
+    contact_radius = None
+    if detected and touching_pair is not None:
+        left, right = touching_pair["left"], touching_pair["right"]
+        contact_point = (
+            int(round(0.5 * (left[0] + right[0]))),
+            int(round(touching_pair["valley_y"])),
+        )
+    elif detected and shallow_contact is not None:
+        # Peak detection can merge two overlapping fingers into one peak.  In
+        # that case localise the small contour notch at the contact-seam end.
+        contact_point = shallow_contact[1]
+
+    if contact_point is not None:
+        defect_mask, bbox, contact_radius = _contact_region(
+            mask, contact_point, glove_h, glove_w
+        )
 
     area_pct = 100.0 * np.count_nonzero(defect_mask) / max(np.count_nonzero(mask), 1)
     result.update({
@@ -129,6 +267,20 @@ def detect_touching(processed: dict, segmentation: dict) -> dict:
             "deep_finger_valleys": int(deep_count),
             "moderate_finger_valleys": int(moderate_count),
             "upper_hand_solidity": round(float(solidity), 4),
+            "fingertip_peaks": int(len(peaks)),
+            "candidate_pair_gaps": int(len(pair_gaps)),
+            "touching_pair_found": touching_pair is not None,
+            "contact_point": contact_point,
+            "contact_radius_px": contact_radius,
+            "shallow_contact_found": shallow_contact is not None,
+            "touching_gap_depth_ratio": (
+                round(float(touching_pair["depth_ratio"]), 4)
+                if touching_pair is not None else None
+            ),
+            "touching_gap_relative_depth": (
+                round(float(touching_pair["relative_depth"]), 4)
+                if touching_pair is not None else None
+            ),
         },
     })
     return result

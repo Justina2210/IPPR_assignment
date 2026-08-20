@@ -1,8 +1,9 @@
 """Incomplete-beading / incomplete-cuff-hem detector.
 
-Checks whether the strong horizontal cuff ridge/hem near the glove opening is
-continuous across the cuff width. This can also represent an incomplete knitted
-cuff hem on cotton gloves.
+Uses two complementary signals: continuity of the cuff ridge and regularity of
+the actual cuff-opening silhouette.  The latter is important for latex and
+nitrile samples where the defect is a missing/notched cuff edge rather than a
+visible break in an internal horizontal ridge.
 """
 
 import cv2
@@ -14,7 +15,7 @@ def _empty_result():
         "defect_name": "incomplete_beading",
         "detected": False,
         "detection_score": 0.0,
-        "algorithm": "cuff-band horizontal-gradient continuity and gap analysis",
+        "algorithm": "cuff ridge continuity + lower-silhouette notch analysis",
         "bounding_box": None,
         "mask": None,
         "measurements": {},
@@ -36,6 +37,12 @@ def _longest_false_run(values):
         else:
             current = 0
     return longest, start_best, end_best
+
+
+def _smooth_1d(values, width):
+    """Smooth a one-dimensional profile without changing its length."""
+    width = max(3, int(width) | 1)
+    return cv2.GaussianBlur(values.astype(np.float32)[None, :], (width, 1), 0)[0]
 
 
 def detect_incomplete_beading(processed: dict, segmentation: dict) -> dict:
@@ -124,19 +131,70 @@ def detect_incomplete_beading(processed: dict, segmentation: dict) -> dict:
     gap_signal = np.clip((gap_ratio - 0.05) / 0.25, 0.0, 1.0)
     coverage_context = np.clip((coverage - 0.20) / 0.35, 0.0, 1.0)
     brokenness = np.clip((0.90 - coverage) / 0.55, 0.0, 1.0)
-    score = float(np.clip(0.62 * gap_signal + 0.20 * coverage_context + 0.18 * brokenness, 0.0, 1.0))
-    detected = score >= 0.50 and gap_ratio >= 0.08 and coverage >= 0.18
+    ridge_score = float(np.clip(
+        0.62 * gap_signal + 0.20 * coverage_context + 0.18 * brokenness,
+        0.0, 1.0,
+    ))
+
+    # Analyse the true lower silhouette. A complete cuff opening is approximately
+    # straight or gently curved; incomplete beading produces a deep local notch or
+    # a substantial run that ends well above the two outer cuff edges.
+    lower_y = np.full(gw, np.nan, dtype=np.float32)
+    for col in range(gw):
+        col_ys = np.flatnonzero(mask[:, x0 + col] > 0)
+        if col_ys.size:
+            lower_y[col] = float(col_ys[-1])
+
+    trim = max(2, int(0.08 * gw))
+    valid_lower = np.isfinite(lower_y)
+    core_idx = np.flatnonzero(valid_lower)[trim: max(trim, np.count_nonzero(valid_lower) - trim)]
+    notch_depth = notch_ratio = notch_width_ratio = 0.0
+    notch_start = notch_end = 0
+    silhouette_score = 0.0
+    if core_idx.size >= 20:
+        lo, hi = int(core_idx[0]), int(core_idx[-1])
+        profile = lower_y[lo:hi + 1]
+        finite = np.isfinite(profile)
+        if np.count_nonzero(finite) >= 20:
+            # Interpolate rare missing columns before smoothing.
+            xx = np.arange(profile.size)
+            profile[~finite] = np.interp(xx[~finite], xx[finite], profile[finite])
+            profile = _smooth_1d(profile, max(5, int(0.025 * gw)))
+            edge_n = max(4, int(0.16 * profile.size))
+            edge_level = float(np.median(np.r_[profile[:edge_n], profile[-edge_n:]]))
+            depth = edge_level - profile
+            notch_depth = float(max(0.0, depth.max()))
+            notch_ratio = notch_depth / gh
+            deep = depth >= max(0.025 * gh, 0.35 * notch_depth)
+            run, rs, re = _longest_false_run(~deep)
+            notch_width_ratio = run / max(profile.size, 1)
+            notch_start, notch_end = lo + rs, lo + re
+            depth_signal = np.clip((notch_ratio - 0.025) / 0.10, 0.0, 1.0)
+            width_signal = np.clip((notch_width_ratio - 0.06) / 0.28, 0.0, 1.0)
+            silhouette_score = float(0.68 * depth_signal + 0.32 * width_signal)
+
+    score = float(max(ridge_score, silhouette_score))
+    ridge_detected = ridge_score >= 0.50 and gap_ratio >= 0.08 and coverage >= 0.18
+    notch_detected = silhouette_score >= 0.50 and notch_ratio >= 0.035 and notch_width_ratio >= 0.07
+    detected = ridge_detected or notch_detected
 
     defect_mask = np.zeros_like(mask)
     bbox = None
-    if detected and longest_gap > 0:
+    if notch_detected:
+        gx0 = x0 + notch_start
+        gx1 = x0 + notch_end
+        gy0 = max(y0, int(y1 - max(notch_depth, 0.08 * gh)))
+        gy1 = y1
+        cv2.rectangle(defect_mask, (gx0, gy0), (gx1, gy1), 255, -1)
+        bbox = (gx0, gy0, max(1, gx1 - gx0 + 1), max(1, gy1 - gy0 + 1))
+    elif ridge_detected and longest_gap > 0:
         gx0 = x0 + left + gap_start
         gx1 = x0 + left + gap_end
         gy0 = max(y0, bead_y - max(6, radius * 2))
         gy1 = min(y1, bead_y + max(6, radius * 2))
         cv2.rectangle(defect_mask, (gx0, gy0), (gx1, gy1), 255, -1)
-        defect_mask = cv2.bitwise_and(defect_mask, mask)
         bbox = (gx0, gy0, max(1, gx1 - gx0 + 1), max(1, gy1 - gy0 + 1))
+    defect_mask = cv2.bitwise_and(defect_mask, mask)
 
     area_pct = 100.0 * np.count_nonzero(defect_mask) / max(np.count_nonzero(mask), 1)
     result.update({
@@ -151,6 +209,11 @@ def detect_incomplete_beading(processed: dict, segmentation: dict) -> dict:
             "longest_gap_px": int(longest_gap),
             "longest_gap_ratio": round(float(gap_ratio), 4),
             "edge_threshold": round(float(edge_threshold), 2),
+            "ridge_score": round(ridge_score, 4),
+            "cuff_notch_depth_px": round(notch_depth, 2),
+            "cuff_notch_depth_ratio": round(notch_ratio, 4),
+            "cuff_notch_width_ratio": round(notch_width_ratio, 4),
+            "silhouette_score": round(silhouette_score, 4),
         },
     })
     return result
