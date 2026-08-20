@@ -1,61 +1,28 @@
-"""
-detectors/stain.py
-------------------
-Stain: liquid marks that have soaked or smeared into the glove surface.
-
-Author: Ka Sin (M2)
-
-What stain looks like in this dataset
--------------------------------------
-Dark brown coffee-like marks on pale latex, and near-black ink-like
-strokes on blue nitrile. In both materials the mark is a *stroke*: it is
-much longer than it is wide, it has a hard edge where the liquid stopped,
-and individual marks are far larger than a spot.
-
-Against the other two defects in this member's set:
-
-- versus spotting - a stain region is an order of magnitude larger and
-  clearly elongated, where a spot is small and round;
-- versus dirty - a stain has a hard boundary and leaves the surrounding
-  glove clean, where soiling fades outward into a halo.
-
-So the decisive features are region size, elongation, low circularity
-and a high isolation ratio.
-
-Technique
----------
-Illumination-normalised LAB anomaly extraction (shared front-end)
--> connected-component analysis
--> geometric filtering on size, elongation and boundary sharpness
--> weighted evidence over the largest mark, elongation and isolation.
-
-Thresholds
-----------
-Chosen by inspecting feature distributions on the group's own dataset.
-They are not learned, and they were tuned on the same images used for
-testing, which makes the reported detection rate optimistic. This is
-stated as a limitation in the report.
-"""
+"""Detect liquid-like stains using LAB anomalies and region geometry."""
 
 import numpy as np
 
 from . import _anomaly
 
 
-# A stain mark is substantially bigger than a speck.
+# Minimum region coverage considered a stain mark.
 MIN_MARK_AREA_FRAC = 0.0012
 
-# Strokes are not round. This rejects the compact specks that spotting
-# produces so the two detectors do not simply mirror each other.
+# Maximum circularity accepted for a stroke-like mark.
 MAX_MARK_CIRCULARITY = 0.90
 
-# Evidence ramps: (low, high) - low scores 0, high scores 1.
+# Largest-mark score ramp.
 LARGEST_MARK_RAMP = (0.004, 0.030)
+# Elongation score ramp.
 ELONGATION_RAMP = (1.25, 2.10)
+# Isolation score ramp.
 ISOLATION_RAMP = (4.0, 7.5)
+# Coverage score ramp.
 COVERAGE_RAMP = (0.015, 0.090)
+# Circularity score ramp; lower circularity indicates a stroke.
 SHAPE_RAMP = (0.75, 0.35)           # reversed: lower circularity is more stroke-like
 
+# Minimum combined score for detection.
 DECISION_THRESHOLD = 0.50
 
 
@@ -105,13 +72,7 @@ def detect_stain(processed: dict, segmentation: dict) -> dict:
         result["measurements"] = {"mark_count": 0, "area_pct": 0.0}
         return result
 
-    # Isolation carries the most weight, and it is what stops this
-    # detector from simply relabelling every dirty glove as stained.
-    # A stain leaves the glove around it clean, so its darkening is
-    # many times that of its surroundings (measured range 5.5-17.7 on
-    # the true stains). Soiling fades outward into a halo, so the same
-    # ratio stays low (3.3-4.6 on the dirty images). Size and shape
-    # then confirm that the mark is a stroke rather than a speck.
+    # Isolation prevents diffuse soiling from being relabelled as stain.
     evidence = _anomaly.combine([
         (0.38, _anomaly.ramp(stats["isolation"], *ISOLATION_RAMP)),
         (0.20, _anomaly.ramp(stats["max_area_frac"], *LARGEST_MARK_RAMP)),
@@ -120,9 +81,7 @@ def detect_stain(processed: dict, segmentation: dict) -> dict:
         (0.12, _anomaly.ramp(stats["area_frac"], *COVERAGE_RAMP)),
     ])
 
-    # Shadow rejection. A deep crease in a loose glove is long, narrow,
-    # dark and sharply bounded, which is the same geometry a stain
-    # stroke has. Colour evidence is what separates them.
+    # Colour confidence reduces false positives from crease shadows.
     confidence = _anomaly.chromatic_confidence(stats)
     score = evidence * confidence
 

@@ -1,60 +1,30 @@
-"""
-detectors/spotting.py
----------------------
-Spotting: many small, discrete specks scattered over the glove.
-
-Author: Ka Sin (M2)
-
-What spotting looks like in this dataset
-----------------------------------------
-On pale latex the specks are rust/orange coloured; on blue nitrile they
-are near-black. In both cases the individual marks are small (a few
-dozen pixels at the working resolution of 1000 px on the long side),
-close to circular, and separated from each other by clean glove.
-
-That last property is what makes spotting different from dirty, which
-otherwise produces a similar count of small dark regions on knit cotton.
-Dirt is a smear: the glove *between* the specks is also soiled. Spots
-are discrete: the glove between them is clean. The `isolation` statistic
-in _anomaly.cloud_statistics measures exactly this, and it is the single
-feature that keeps the two apart.
-
-Technique
----------
-Illumination-normalised LAB anomaly extraction (shared front-end)
--> connected-component analysis
--> shape filtering on circularity, elongation and size
--> weighted evidence score over count, shape, size and isolation.
-
-Thresholds
-----------
-Every constant below was chosen by inspecting the feature distributions
-of the group's own 68-image dataset. They are not learned, and they were
-tuned on the same images the system is tested on, so the reported
-detection rate is optimistic. This is recorded as a limitation in the
-report rather than hidden.
-"""
+"""Detect discrete spotting using LAB anomalies and speck geometry."""
 
 import numpy as np
 
 from . import _anomaly
 
 
-# Individual specks are small. A region larger than this fraction of the
-# glove is a smear or a stain, not a spot.
+# Maximum region coverage accepted for a speck.
 MAX_SPECK_AREA_FRAC = 0.010
 
-# A speck is roughly round. These reject wrinkle fragments and streaks.
+# Minimum circularity accepted for a speck.
 MIN_SPECK_CIRCULARITY = 0.55
+# Maximum elongation accepted for a speck.
 MAX_SPECK_ELONGATION = 2.2
 
-# Evidence ramps: (low, high) - low scores 0, high scores 1.
+# Count score ramp.
 COUNT_RAMP = (12.0, 55.0)
+# Circularity score ramp.
 CIRCULARITY_RAMP = (0.70, 0.95)
+# Isolation score ramp.
 ISOLATION_RAMP = (4.0, 9.0)
+# Coverage score ramp.
 COVERAGE_RAMP = (0.010, 0.060)
+# Median-area score ramp; smaller specks score higher.
 SMALLNESS_RAMP = (200.0, 60.0)      # reversed: smaller median area is better
 
+# Minimum combined score for detection.
 DECISION_THRESHOLD = 0.50
 
 
@@ -90,8 +60,7 @@ def detect_spotting(processed: dict, segmentation: dict) -> dict:
         result["measurements"] = {"note": "glove interior too small to analyse"}
         return result
 
-    # Keep only regions surrounded by glove, then only those shaped
-    # like a speck.
+    # Keep regions surrounded by glove and shaped like specks.
     surrounded = _anomaly.accept_blobs(blobs)
     specks = [
         b for b in surrounded
@@ -107,9 +76,7 @@ def detect_spotting(processed: dict, segmentation: dict) -> dict:
         result["measurements"] = {"speck_count": 0, "area_pct": 0.0}
         return result
 
-    # Weighted evidence. Count and isolation carry the most weight
-    # because they are what distinguish spotting from a dirt smear;
-    # shape and size confirm that the regions really are specks.
+    # Count and isolation distinguish spotting from diffuse soiling.
     evidence = _anomaly.combine([
         (0.30, _anomaly.ramp(stats["count"], *COUNT_RAMP)),
         (0.25, _anomaly.ramp(stats["isolation"], *ISOLATION_RAMP)),
@@ -118,10 +85,7 @@ def detect_spotting(processed: dict, segmentation: dict) -> dict:
         (0.10, _anomaly.ramp(stats["area_frac"], *COVERAGE_RAMP)),
     ])
 
-    # The same shadow rejection the other two detectors use. The shape
-    # filters above already make this detector hard to fool, so the
-    # gate changes little here - but applying it keeps all three
-    # detectors on one consistent rule.
+    # Apply the shared colour gate for consistent shadow rejection.
     confidence = _anomaly.chromatic_confidence(stats)
     score = evidence * confidence
 

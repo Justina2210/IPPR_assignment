@@ -1,70 +1,42 @@
-"""
-detectors/dirty.py
-------------------
-Dirty: diffuse soiling spread across part of the glove surface.
-
-Author: Ka Sin (M2)
-
-What dirty looks like in this dataset
--------------------------------------
-On knit cotton the soiling is granular - dust and grime caught in the
-weave, which thresholds into many small dark fragments. On latex it is
-a smoother grey-brown smear. The two look very different at the level
-of individual regions, which is why this detector does not classify
-regions one at a time.
-
-What they share, and what no other defect in the set shares, is that
-the glove *between* the dark fragments is itself darkened. Soiling has
-a halo: it fades outward instead of stopping at a hard edge. Spotting,
-by contrast, is discrete marks on clean glove.
-
-So the decisive feature here is `ring_dark` from
-_anomaly.cloud_statistics - the average darkening of the glove
-immediately around the detected regions, with the regions and their
-neighbours excluded - together with its inverse, the `isolation` ratio.
-Dirty is the low-isolation case; spotting and stain are the high ones.
-
-Technique
----------
-Illumination-normalised LAB anomaly extraction (shared front-end)
--> connected-component analysis
--> soiling-halo measurement on the glove around each region
--> weighted evidence over coverage, halo darkening and low isolation.
-
-Thresholds
-----------
-Chosen by inspecting feature distributions on the group's own dataset.
-They are not learned, and they were tuned on the same images used for
-testing, which makes the reported detection rate optimistic. This is
-stated as a limitation in the report.
-"""
+"""Detect diffuse soiling using LAB anomalies and surrounding darkening."""
 
 import numpy as np
 
 from . import _anomaly
 
 
-# Dirt covers area. A handful of tiny specks is spotting, not soiling.
+# Minimum fragment coverage considered soiling.
 MIN_FRAGMENT_AREA_FRAC = 0.00015
 
-# Evidence ramps: (low, high) - low scores 0, high scores 1.
+# Coverage score ramp.
 COVERAGE_RAMP = (0.030, 0.130)
+# Surrounding-darkening score ramp.
 HALO_RAMP = (0.018, 0.045)
+# Isolation score ramp; lower isolation indicates diffuse soiling.
 DIFFUSENESS_RAMP = (7.0, 3.2)       # reversed: lower isolation is dirtier
-CLUSTER_RAMP = (0.25, 0.45)         # how densely the fragments pack
+# Cluster-fill score ramp.
+CLUSTER_RAMP = (0.25, 0.45)
+# Mean-darkening score ramp.
 DEPTH_RAMP = (0.08, 0.20)
 
+# Minimum combined score for detection.
 DECISION_THRESHOLD = 0.50
 
 
 def _cluster_fill(defect_mask, equivalent_radius):
-    """
-    How densely the detected fragments pack into the area they occupy.
+    """Measure how densely fragments fill their dilated envelope.
 
-    The mask is dilated so that neighbouring fragments merge into one
-    envelope, and the result is the fraction of that envelope which is
-    actually flagged. Granular dirt packs tightly and fills a large part
-    of its envelope; scattered spots leave most of theirs empty.
+    Parameters
+    ----------
+    defect_mask : numpy.ndarray
+        Binary fragment mask.
+    equivalent_radius : float
+        Radius used to scale dilation.
+
+    Returns
+    -------
+    float
+        Fraction of the envelope occupied by fragments.
     """
     import cv2
 
@@ -121,8 +93,7 @@ def detect_dirty(processed: dict, segmentation: dict) -> dict:
 
     fill = _cluster_fill(dirt_mask, stats["equivalent_radius"])
 
-    # Coverage and the soiling halo carry the most weight: soiling is
-    # defined by covering area and by dulling the surface around it.
+    # Coverage and surrounding darkening are the primary soiling cues.
     evidence = _anomaly.combine([
         (0.30, _anomaly.ramp(stats["area_frac"], *COVERAGE_RAMP)),
         (0.25, _anomaly.ramp(stats["ring_dark"], *HALO_RAMP)),
@@ -131,11 +102,7 @@ def detect_dirty(processed: dict, segmentation: dict) -> dict:
         (0.10, _anomaly.ramp(stats["mean_dark"], *DEPTH_RAMP)),
     ])
 
-    # Shadow rejection. A bunched or folded glove produces exactly the
-    # shape signature this detector looks for - broad, low-contrast,
-    # diffuse darkening with a soft halo - so the geometric evidence
-    # alone cannot tell soiling from a crease. Requiring colour
-    # evidence is what makes the difference.
+    # Colour confidence reduces false positives from crease shadows.
     confidence = _anomaly.chromatic_confidence(stats)
     score = evidence * confidence
 

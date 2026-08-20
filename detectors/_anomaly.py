@@ -1,68 +1,11 @@
-"""
-detectors/_anomaly.py
----------------------
-Shared colour-anomaly front-end for the three surface-contamination
-defects owned by Ka Sin: dirty, stain and spotting.
-
-This is a HELPER module, not a detector. It is deliberately prefixed
-with an underscore so evaluate.py's DETECTOR_REGISTRY never picks it
-up as a defect.
-
-Why a shared front-end
-----------------------
-Dirty, stain and spotting are all "foreign material sitting on an
-otherwise uniform glove surface". They therefore share the same first
-question - *which pixels do not look like the glove material?* - and
-differ only in the second question - *what shape and contrast does
-that foreign material have?*
-
-Splitting the problem this way means the expensive, error-prone part
-(separating true surface contamination from shading, wrinkles and
-segmentation leakage) is written, tuned and justified once, and the
-three detectors stay small and readable.
-
-Pipeline
---------
-    glove_mask (from segmentation.py)
-        v
-    1. glove_interior()      distance-transform margin - drop the dark
-                             self-shadow rim at the silhouette edge
-        v
-    2. robust_background()   flat-field estimate of L, a, b from the
-                             glove itself (illumination model)
-        v
-    3. anomaly_fields()      per-pixel darkening + colour-shift maps
-        v
-    4. candidate_mask()      threshold + morphology (wrinkle removal)
-        v
-    5. describe_blobs()      per-region shape/contrast feature table
-
-Nothing here re-implements resizing, denoising or background removal -
-those belong to preprocessing.py and segmentation.py.
-"""
+"""Shared colour-anomaly processing for the dirty, stain and spotting detectors."""
 
 import cv2
 import numpy as np
 
 
-# ============================================================
-# 1. INTERIOR MASK
-# ============================================================
-
 def glove_interior(glove_mask, margin_ratio=0.09, min_margin=10, max_margin=40):
-    """
-    Shrink the glove mask away from its own silhouette edge.
-
-    A glove is a curved object, so the last few millimetres before the
-    silhouette are always in self-shadow, and the segmentation boundary
-    itself sits on a colour ramp between glove and background. Both
-    effects look exactly like "a dark region on the glove" to a colour
-    anomaly test, and in practice they were the single largest source
-    of false positives.
-
-    The margin is derived from the glove's own equivalent radius rather
-    than from the image size, so it scales with how much of the frame
-    the glove occupies instead of assuming a fixed framing.
+    """Remove a scale-aware margin from the glove silhouette.
 
     Parameters
     ----------
@@ -89,54 +32,19 @@ def glove_interior(glove_mask, margin_ratio=0.09, min_margin=10, max_margin=40):
     equivalent_radius = np.sqrt(area / np.pi)
     margin = int(np.clip(margin_ratio * equivalent_radius, min_margin, max_margin))
 
-    # Distance transform gives, for every glove pixel, its distance to
-    # the nearest non-glove pixel. Thresholding it is an exact,
-    # shape-independent erosion by `margin` pixels.
+    # Use distance thresholding for scale-independent erosion.
     distance = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
     interior = (distance > margin).astype(np.uint8) * 255
 
-    # Safety net: if the glove is thin enough that the margin removes
-    # nearly everything, back off to a light erosion so the detector
-    # still has something to work with.
+    # Fall back to lighter erosion when the normal margin removes too much.
     if int(np.count_nonzero(interior)) < 0.25 * area:
         interior = (distance > max(3, margin // 3)).astype(np.uint8) * 255
 
     return interior
 
 
-# ============================================================
-# 2. ILLUMINATION BACKGROUND
-# ============================================================
-
 def robust_background(channel, mask, scale=8, ksize=11, passes=2):
-    """
-    Estimate the smooth, defect-free version of one LAB channel.
-
-    This is a flat-field / illumination model: it answers "what would
-    this pixel look like if the glove were clean here?". Comparing each
-    pixel against a *local* estimate instead of one global average is
-    what makes the detectors tolerant of uneven lighting, which the
-    brief explicitly requires.
-
-    Robustness comes from three choices:
-
-    - A median filter, not a blur or a morphological closing. A closing
-      takes a local maximum, so a single specular highlight propagates
-      across its whole neighbourhood and makes the entire glove look
-      "too dark" by comparison. A plain blur has the opposite problem:
-      large dark defects drag the estimate down and hide themselves. A
-      median ignores both as long as they occupy less than half the
-      window.
-    - Highlight clipping before filtering, so the brightest specular
-      pixels cannot bias the estimate at all.
-    - A second pass in which pixels darker than the first estimate are
-      lifted up to it. Large dirty patches can occupy more than half of
-      a window and defeat a single median pass; after one pass they no
-      longer pull the estimate down.
-
-    The filtering is done on a downsampled copy because the window has
-    to be large compared with the defects, and a large median on a full
-    resolution image is far too slow for an interactive GUI.
+    """Estimate a smooth, defect-free version of one LAB channel.
 
     Parameters
     ----------
@@ -164,8 +72,7 @@ def robust_background(channel, mask, scale=8, ksize=11, passes=2):
     median_value = float(np.median(values))
     highlight_cap = float(np.percentile(values, 97.0))
 
-    # Clip speculars, and neutralise everything outside the glove so
-    # the background colour never leaks into the estimate.
+    # Clip highlights and mask the background so neither biases the estimate.
     filled = np.minimum(channel.astype(np.float32), highlight_cap)
     filled[~selected] = median_value
 
@@ -181,28 +88,21 @@ def robust_background(channel, mask, scale=8, ksize=11, passes=2):
         smoothed = cv2.medianBlur(small, ksize).astype(np.float32)
         background = cv2.resize(smoothed, (width, height), interpolation=cv2.INTER_LINEAR)
         background = cv2.GaussianBlur(background, (0, 0), scale)
-        # Lift dark pixels to the current estimate so the next pass is
-        # not dragged down by large defects.
+        # Lift dark pixels so large defects do not bias the next pass.
         working = np.maximum(filled, background)
 
     return background
 
 
-# ============================================================
-# 3. ANOMALY FIELDS
-# ============================================================
-
 def anomaly_fields(processed, interior_mask):
-    """
-    Build the per-pixel maps the three detectors reason about.
+    """Build lightness, chroma and edge maps for anomaly detection.
 
-    All three defects are foreign material that is *darker* than the
-    glove, and some of them are also a different *hue*. Splitting the
-    LAB difference into a lightness term and a chroma term keeps those
-    two cues independent, so a rust-coloured speck that is barely
-    darker than pale latex is still caught by the chroma term, and a
-    black ink streak on blue nitrile is still caught by the lightness
-    term.
+    Parameters
+    ----------
+    processed : dict
+        Preprocessed image channels.
+    interior_mask : numpy.ndarray
+        Binary glove interior mask.
 
     Returns
     -------
@@ -241,34 +141,26 @@ def anomaly_fields(processed, interior_mask):
     }
 
 
-# ============================================================
-# 4. CANDIDATE MASK
-# ============================================================
-
 def candidate_mask(fields, interior_mask,
                    dark_abs_min=12.0, dark_rel_min=0.10, chroma_min=9.0,
                    open_radius=2, close_radius=2):
-    """
-    Threshold the anomaly maps into a binary candidate mask.
+    """Threshold anomaly maps and clean the result morphologically.
 
-    Two design decisions matter here.
+    Parameters
+    ----------
+    fields : dict
+        Anomaly maps from :func:`anomaly_fields`.
+    interior_mask : numpy.ndarray
+        Binary glove interior mask.
+    dark_abs_min, dark_rel_min, chroma_min : float
+        Lightness and chroma thresholds.
+    open_radius, close_radius : int
+        Morphological kernel radii.
 
-    First, the darkening test is a *conjunction* of an absolute and a
-    relative threshold. The relative term alone would fire on dark
-    gloves, where a few L units is a large fraction; the absolute term
-    alone would fire on bright gloves under uneven light. Requiring
-    both keeps the test stable across nitrile, latex and cotton.
-
-    Second, the thresholds are fixed constants rather than a
-    per-image adaptive rule such as Otsu. Otsu always returns a split,
-    so on a perfectly clean glove it manufactures a "defect" out of
-    ordinary shading. Since the system has to be able to answer "no
-    defect here", an absolute physical threshold is the correct choice
-    and a data-driven one is not.
-
-    The morphological opening removes wrinkle and crease lines, which
-    are one or two pixels wide and survive thresholding on latex and
-    nitrile; a defect wide enough to matter survives it.
+    Returns
+    -------
+    numpy.ndarray
+        Binary candidate mask.
     """
     dark_hit = (fields["dark_abs"] > dark_abs_min) & (fields["dark_rel"] > dark_rel_min)
     colour_hit = fields["chroma"] > chroma_min
@@ -287,44 +179,24 @@ def candidate_mask(fields, interior_mask,
     return candidate
 
 
-# ============================================================
-# 5. BLOB DESCRIPTION
-# ============================================================
-
 def describe_blobs(candidate, fields, interior_mask, min_area=20):
-    """
-    Turn the candidate mask into a table of measured regions.
+    """Describe connected candidate regions using shape and contrast features.
 
-    Every downstream decision is made from these numbers, so each one
-    is chosen to separate the three defects from each other and from
-    the benign structures that survive thresholding:
+    Parameters
+    ----------
+    candidate : numpy.ndarray
+        Binary candidate mask.
+    fields : dict
+        Anomaly maps from :func:`anomaly_fields`.
+    interior_mask : numpy.ndarray
+        Binary glove interior mask.
+    min_area : int
+        Minimum connected-component area.
 
-    area_frac    fraction of the glove the region covers
-    circularity  4*pi*A / P^2 - near 1 for a round speck, low for a
-                 streak or a ragged smear
-    elongation   major/minor axis ratio of the bounding box
-    solidity     area / convex-hull area - a compact speck fills its
-                 hull, a ragged dirt smear does not
-    mean_dark    average relative darkening inside the region, i.e.
-                 how strong the contamination is
-    edge_sharp   mean L-gradient on the region's boundary, normalised
-                 by its depth - an ink stain has a hard edge, a dust
-                 smear fades out
-    texture      standard deviation of L inside the region, normalised
-                 - granular dirt is speckled, a liquid stain is flat
-    edge_contact fraction of the region's perimeter that lies on the
-                 edge of the analysed area rather than on clean glove
-
-    `edge_contact` deserves a note, because it does most of the work in
-    suppressing false positives. Surface contamination is *surrounded*
-    by glove material: a stain has clean glove on every side of it. Two
-    of the three things that survive thresholding do not have that
-    property. Forearm skin that segmentation failed to cut away runs
-    off the bottom of the analysed area, and the shading band along a
-    curved finger runs along its silhouette. Both therefore have most
-    of their perimeter on the boundary, and a single ratio separates
-    them from real defects without needing to model skin colour or
-    re-do any segmentation.
+    Returns
+    -------
+    list
+        Feature dictionaries for candidate regions.
     """
     blobs = []
     if candidate is None:
@@ -349,7 +221,7 @@ def describe_blobs(candidate, fields, interior_mask, min_area=20):
 
         region = (labels == index)
 
-        # Perimeter and convex hull from the region's own contour.
+        # Measure shape from each region's own contour.
         patch = region[y:y + h, x:x + w].astype(np.uint8) * 255
         contours, _ = cv2.findContours(patch, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         if not contours:
@@ -362,9 +234,7 @@ def describe_blobs(candidate, fields, interior_mask, min_area=20):
         hull_area = cv2.contourArea(cv2.convexHull(contour))
         solidity = float(area / hull_area) if hull_area > 0 else 0.0
 
-        # Boundary ring of the region, for edge sharpness and edge
-        # contact. The patch is taken with a one-pixel pad so the ring
-        # is complete instead of being clipped at the bounding box.
+        # Pad the patch so boundary measurements are not clipped.
         height, width = region.shape[:2]
         px0, py0 = max(0, x - 1), max(0, y - 1)
         px1, py1 = min(width, x + w + 1), min(height, y + h + 1)
@@ -378,8 +248,7 @@ def describe_blobs(candidate, fields, interior_mask, min_area=20):
         edge_sharp = float(gradient[ring_full].mean()) if ring_full.any() else 0.0
         edge_sharp = edge_sharp / (255.0 * depth + 1e-3)
 
-        # How much of the region's perimeter sits on the edge of the
-        # analysed area instead of on clean glove.
+        # Edge contact rejects regions not surrounded by glove material.
         if ring_full.any():
             edge_contact = float(np.mean(interior_mask[ring_full] == 0))
         else:
@@ -405,49 +274,42 @@ def describe_blobs(candidate, fields, interior_mask, min_area=20):
     return blobs
 
 
-# ============================================================
-# 6. REGION ACCEPTANCE AND CLOUD STATISTICS
-# ============================================================
-
 def accept_blobs(blobs, max_edge_contact=0.30):
-    """
-    Drop regions that are not surrounded by glove material.
+    """Keep regions whose boundary is mostly surrounded by glove material.
 
-    See the `edge_contact` note in describe_blobs. The threshold is
-    deliberately generous: a defect that happens to sit near the edge
-    of the hand still has most of its perimeter on clean glove, so it
-    survives, while forearm skin and silhouette shading do not.
+    Parameters
+    ----------
+    blobs : list
+        Region feature dictionaries.
+    max_edge_contact : float
+        Maximum allowed boundary contact ratio.
+
+    Returns
+    -------
+    list
+        Accepted region dictionaries.
     """
     return [b for b in blobs if b["edge_contact"] < max_edge_contact]
 
 
 def cloud_statistics(blobs, defect_mask, fields, interior_mask):
-    """
-    Summarise the accepted regions as a whole.
+    """Summarise accepted regions with aggregate shape and colour statistics.
 
-    Two of these numbers do most of the classification work.
+    Parameters
+    ----------
+    blobs : list
+        Accepted region feature dictionaries.
+    defect_mask : numpy.ndarray
+        Binary mask containing accepted regions.
+    fields : dict
+        Anomaly maps from :func:`anomaly_fields`.
+    interior_mask : numpy.ndarray
+        Binary glove interior mask.
 
-    `ring_dark` is the average darkening of the glove immediately
-    *around* the accepted regions, with the regions themselves and all
-    their neighbours excluded. It answers the question that separates
-    dirt from spots: is this region an isolated mark on clean glove, or
-    one speck inside a broader soiled patch? Dirt darkens its own
-    surroundings, so its ring is dark; an ink spot does not.
-
-    `isolation` is the ratio of the regions' own darkening to that ring
-    value. It is high for a discrete, well-defined mark and low for
-    granular dirt that fades into a smear, and unlike an absolute
-    darkness threshold it does not change when the exposure does.
-
-    `chromatic_fraction` is the third key number and it exists to
-    separate contamination from shadow. A cast shadow scales lightness
-    down but leaves the surface hue essentially unchanged, so its a/b
-    deviation from the local background stays near zero. Foreign
-    material does change hue - brown coffee, rust-coloured spots, black
-    ink that pulls blue nitrile towards neutral. Measuring the
-    *fraction* of flagged pixels that show a real colour shift, rather
-    than the average shift, keeps the number meaningful when a defect
-    has both a strongly coloured core and a soft grey edge.
+    Returns
+    -------
+    dict
+        Aggregate measurements used by the detectors.
     """
     glove_area = max(1, int(np.count_nonzero(interior_mask)))
     equivalent_radius = float(np.sqrt(glove_area / np.pi))
@@ -473,8 +335,7 @@ def cloud_statistics(blobs, defect_mask, fields, interior_mask):
         pad = max(4, int(0.4 * max(w, h)))
         x0, y0 = max(0, x - pad), max(0, y - pad)
         x1, y1 = min(width, x + w + pad), min(height, y + h + pad)
-        # Exclude every accepted region, not just this one, so a dense
-        # cluster of specks does not measure itself.
+        # Exclude all accepted regions so dense clusters do not measure themselves.
         ring = (defect_mask[y0:y1, x0:x1] == 0) & (interior_mask[y0:y1, x0:x1] > 0)
         if ring.any():
             ring_values.append(float(dark_rel[y0:y1, x0:x1][ring].mean()))
@@ -484,10 +345,7 @@ def cloud_statistics(blobs, defect_mask, fields, interior_mask):
     centroids = np.array([b["centroid"] for b in blobs], dtype=float)
     mean_dark = float(np.median([b["mean_dark"] for b in blobs]))
 
-    # Colour evidence over all flagged pixels. CHROMA_EVIDENCE is the
-    # a/b shift at which a pixel counts as genuinely discoloured rather
-    # than merely shaded; it is the same scale as the chroma_min used
-    # when the candidate mask was built.
+    # Use the same chroma scale for candidate selection and confidence.
     flagged = defect_mask > 0
     if flagged.any():
         chroma_values = fields["chroma"][flagged]
@@ -523,53 +381,23 @@ def cloud_statistics(blobs, defect_mask, fields, interior_mask):
     }
 
 
-# ============================================================
-# 7. SHADOW REJECTION
-# ============================================================
-
-# a/b distance at which a pixel counts as genuinely discoloured rather
-# than merely shaded. Matches the chroma_min used to build the
-# candidate mask so the two tests speak the same units.
+# Chroma distance required for colour evidence.
 CHROMA_EVIDENCE = 8.0
 
-# Ramp over which colour evidence is considered convincing.
+# Range over which colour evidence increases confidence.
 CHROMATIC_RAMP = (0.02, 0.20)
 
-# How much of the score a region with no colour evidence at all keeps.
-# Not zero, because grey dust on a white cotton glove is genuinely
-# close to achromatic and should still be able to register; low enough
-# that a pure shadow cannot reach the 0.5 decision threshold on its own.
+# Minimum score multiplier when colour evidence is absent.
 SHADOW_FLOOR = 0.65
 
 
 def chromatic_confidence(stats):
-    """
-    How confident we are that the flagged regions are material, not shade.
+    """Return a soft confidence multiplier based on chroma evidence.
 
-    This is the single test that separates real surface contamination
-    from the fold, crease and pose shadows that dominate the remaining
-    false positives. The physical argument is standard: a cast shadow
-    scales the illumination reaching a surface, which moves lightness
-    but leaves the surface's own hue essentially untouched, so its a/b
-    deviation from the local background stays near zero. Foreign
-    material on the glove has its own reflectance and therefore does
-    shift a/b - brown liquid, rust-coloured specks, or black ink that
-    pulls blue nitrile towards neutral.
-
-    The separation is real but not clean. Measured per detector on the
-    group's own dataset, the clearest shadow cases score near zero
-    (a bunched cotton glove at 0.000, a creased latex glove at 0.065)
-    while strongly coloured defects score 0.6-0.96. In between sits an
-    overlap band around 0.09-0.18 that contains both the weakest true
-    positive (small brown marks on pale latex, 0.089) and the strongest
-    shadow case (a folded cotton glove, 0.099).
-
-    Because of that overlap the test is applied as a soft multiplier
-    rather than a hard veto, and the floor is set high enough that a
-    defect with genuinely achromatic contamination - grey dust on white
-    cotton - can still be detected on shape evidence alone. Treating it
-    as a veto would remove more true positives than false ones, which
-    is why it is not one.
+    Parameters
+    ----------
+    stats : dict
+        Aggregate measurements including chromatic fraction.
 
     Returns
     -------
@@ -580,18 +408,20 @@ def chromatic_confidence(stats):
     return SHADOW_FLOOR + (1.0 - SHADOW_FLOOR) * confidence
 
 
-# ============================================================
-# HELPERS SHARED BY THE THREE DETECTORS
-# ============================================================
-
 def ramp(value, low, high):
-    """
-    Map a measurement onto 0..1 with a linear ramp between two points.
+    """Map a measurement onto 0..1 using a linear ramp.
 
-    Used instead of a hard if/else so that a region sitting just under
-    a threshold produces a low-but-non-zero score rather than
-    disappearing. This is what lets detection_score behave like a
-    confidence value in the GUI rather than a disguised boolean.
+    Parameters
+    ----------
+    value : float
+        Measurement to scale.
+    low, high : float
+        Ramp endpoints.
+
+    Returns
+    -------
+    float
+        Clipped scaled value.
     """
     if high == low:
         return 1.0 if value >= high else 0.0
@@ -599,12 +429,17 @@ def ramp(value, low, high):
 
 
 def combine(weighted_terms):
-    """
-    Combine weighted evidence terms into a single 0..1 score.
+    """Combine weighted evidence terms into a single 0..1 score.
 
-    `weighted_terms` is a list of (weight, value) pairs. A plain
-    weighted mean is used rather than a product so that one weak cue
-    cannot veto an otherwise obvious defect.
+    Parameters
+    ----------
+    weighted_terms : list
+        List of ``(weight, value)`` pairs.
+
+    Returns
+    -------
+    float
+        Clipped weighted mean.
     """
     total_weight = sum(weight for weight, _ in weighted_terms)
     if total_weight <= 0:
@@ -614,7 +449,22 @@ def combine(weighted_terms):
 
 
 def blobs_to_mask(blobs, candidate, shape):
-    """Rebuild a binary mask containing only the accepted regions."""
+    """Rebuild a binary mask containing only accepted regions.
+
+    Parameters
+    ----------
+    blobs : list
+        Accepted region dictionaries.
+    candidate : numpy.ndarray
+        Original candidate mask.
+    shape : tuple
+        Output image shape.
+
+    Returns
+    -------
+    numpy.ndarray
+        Binary mask of accepted regions.
+    """
     mask = np.zeros(shape[:2], dtype=np.uint8)
     if not blobs:
         return mask
@@ -626,7 +476,18 @@ def blobs_to_mask(blobs, candidate, shape):
 
 
 def union_bbox(blobs):
-    """Smallest box containing every accepted region, or None."""
+    """Return the smallest box containing all accepted regions.
+
+    Parameters
+    ----------
+    blobs : list
+        Region dictionaries containing bounding boxes.
+
+    Returns
+    -------
+    tuple or None
+        Bounding box, or ``None`` when no regions are supplied.
+    """
     if not blobs:
         return None
     xs0 = min(b["bbox"][0] for b in blobs)
@@ -637,14 +498,21 @@ def union_bbox(blobs):
 
 
 def prepare(processed, segmentation, **candidate_kwargs):
-    """
-    Run steps 1-5 in one call. Every detector starts with this.
+    """Run the shared anomaly-processing pipeline used by each detector.
+
+    Parameters
+    ----------
+    processed : dict
+        Output of preprocessing.
+    segmentation : dict
+        Output of glove segmentation.
+    **candidate_kwargs
+        Optional candidate-mask thresholds.
 
     Returns
     -------
     tuple(dict or None, numpy.ndarray, list, numpy.ndarray)
-        fields, candidate mask, blob table, interior mask.
-        `fields` is None when the glove mask is unusable.
+        Fields, candidate mask, blob table and interior mask.
     """
     interior = glove_interior(segmentation["glove_mask"])
     if interior is None or int(np.count_nonzero(interior)) < 500:
