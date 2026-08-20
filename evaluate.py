@@ -75,7 +75,7 @@ from segmentation import segment_glove
 # CONFIG
 # ============================================================
 
-DATASET_ROOT = "dataset"
+DATASET_ROOT = "datasets"
 OUTPUT_ROOT = "outputs"
 OVERLAY_DIR = os.path.join(OUTPUT_ROOT, "overlays")
 MASK_DIR = os.path.join(OUTPUT_ROOT, "masks")
