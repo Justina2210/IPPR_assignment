@@ -1,219 +1,1488 @@
-"""Incomplete-beading / incomplete-cuff-hem detector.
+"""
+incomplete_beading.py
+=====================
 
-Uses two complementary signals: continuity of the cuff ridge and regularity of
-the actual cuff-opening silhouette.  The latter is important for latex and
-nitrile samples where the defect is a missing/notched cuff edge rather than a
-visible break in an internal horizontal ridge.
+Detector for INCOMPLETE BEADING at the glove cuff.
+
+This version is OUTLINE-DRIVEN.
+
+Why:
+-----
+Incomplete beading belongs to the BOTTOM CUFF RIM. Previous approaches could
+incorrectly detect side edges because they searched for generic lines/creases.
+
+Pipeline:
+---------
+1. Take the segmented glove mask.
+2. Extract the largest glove contour.
+3. Build a visible glove outline.
+4. Locate the actual bottom-cuff arc from the contour.
+5. Ignore left/right side-wall contour points.
+6. Build a narrow band just INSIDE the bottom cuff outline.
+7. Detect the rolled-bead edge/texture within that band.
+8. Measure continuity along the cuff.
+9. Flag only local missing / weak bead segments.
+10. Return a tight box around the missing segment.
+
+No dependency on any other detector.
+
+Public API:
+-----------
+detect_incomplete_beading(processed: dict, segmentation: dict) -> dict
 """
 
 import cv2
 import numpy as np
 
 
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+DETECTION_THRESHOLD = 0.50
+
+# Portion of glove height where cuff is expected.
+CUFF_TOP_FRAC = 0.72
+
+# The bottom cuff contour is obtained from columns whose bottom-most glove
+# point belongs to the lower glove region.
+MIN_CUFF_COLUMN_DEPTH = 0.74
+
+# Remove sides of detected cuff span.
+CUFF_SIDE_TRIM_FRAC = 0.08
+
+# Bottom profile smoothing.
+PROFILE_SMOOTH_FRAC = 0.020
+
+# Bead band: inspect pixels just INSIDE the bottom silhouette.
+BEAD_BAND_INNER_FRAC = 0.010
+BEAD_BAND_OUTER_FRAC = 0.055
+
+# Edge detector.
+CANNY_LOW = 22
+CANNY_HIGH = 75
+
+# Minimum local span that can be called incomplete.
+MIN_MISSING_WIDTH_FRAC = 0.035
+MAX_MISSING_WIDTH_FRAC = 0.40
+
+# Continuity classification.
+WEAK_SUPPORT_THRESHOLD = 0.30
+STRONG_NORMAL_SUPPORT = 0.55
+
+# Candidate acceptance.
+MIN_CANDIDATE_SCORE = 0.42
+
+
+# ============================================================
+# BASIC HELPERS
+# ============================================================
+
 def _empty_result():
     return {
         "defect_name": "incomplete_beading",
         "detected": False,
         "detection_score": 0.0,
-        "algorithm": "cuff ridge continuity + lower-silhouette notch analysis",
+        "algorithm": (
+            "glove-outline cuff isolation + inner bead-band continuity analysis"
+        ),
         "bounding_box": None,
         "mask": None,
         "measurements": {},
     }
 
 
-def _longest_false_run(values):
-    longest = current = 0
-    start_best = end_best = 0
-    start = 0
-    for i, v in enumerate(values):
-        if not v:
-            if current == 0:
-                start = i
-            current += 1
-            if current > longest:
-                longest = current
-                start_best, end_best = start, i
-        else:
-            current = 0
-    return longest, start_best, end_best
+def _binary(mask):
+    return (mask > 0).astype(np.uint8) * 255
 
 
-def _smooth_1d(values, width):
-    """Smooth a one-dimensional profile without changing its length."""
-    width = max(3, int(width) | 1)
-    return cv2.GaussianBlur(values.astype(np.float32)[None, :], (width, 1), 0)[0]
+def _largest_contour(mask):
+    contours, _ = cv2.findContours(
+        mask,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_NONE,
+    )
+    if not contours:
+        return None
+    return max(contours, key=cv2.contourArea)
 
 
-def detect_incomplete_beading(processed: dict, segmentation: dict) -> dict:
-    result = _empty_result()
-    mask = segmentation.get("glove_mask")
-    gray = processed.get("gray_enhanced")
-    if mask is None or gray is None or np.count_nonzero(mask) < 500:
-        return result
-
-    mask = (mask > 0).astype(np.uint8) * 255
+def _bounds(mask):
     ys, xs = np.where(mask > 0)
+    if xs.size == 0:
+        return None
+
+    x0 = int(xs.min())
+    x1 = int(xs.max())
+    y0 = int(ys.min())
+    y1 = int(ys.max())
+
+    return (
+        x0,
+        y0,
+        x1,
+        y1,
+        max(1, x1 - x0 + 1),
+        max(1, y1 - y0 + 1),
+    )
+
+
+def _smooth_1d(values, window):
+    values = np.asarray(values, dtype=np.float32)
+
+    if values.size == 0:
+        return values.copy()
+
+    window = max(3, int(window))
+    if window % 2 == 0:
+        window += 1
+
+    if window >= values.size:
+        window = values.size - 1 if values.size % 2 == 0 else values.size
+        if window < 3:
+            return values.copy()
+
+    pad = window // 2
+    padded = np.pad(values, (pad, pad), mode="edge")
+    kernel = np.ones(window, dtype=np.float32) / float(window)
+
+    return np.convolve(
+        padded,
+        kernel,
+        mode="valid",
+    )
+
+
+# ============================================================
+# GLOVE OUTLINE
+# ============================================================
+
+def _make_outline(mask, thickness=2):
+    """
+    Draw the full external glove outline.
+
+    This is useful both conceptually and for optional debug visualization.
+    """
+    contour = _largest_contour(mask)
+
+    outline = np.zeros_like(mask)
+
+    if contour is not None:
+        cv2.drawContours(
+            outline,
+            [contour],
+            -1,
+            255,
+            thickness,
+            cv2.LINE_AA,
+        )
+
+    return outline, contour
+
+
+# ============================================================
+# BOTTOM CUFF PROFILE
+# ============================================================
+
+def _bottom_profile(mask, x0, x1):
+    """
+    For each x column, get the lowest glove pixel.
+
+    This directly describes the lower external glove outline.
+    """
+    xs = np.arange(x0, x1 + 1, dtype=np.int32)
+    ys = np.full(len(xs), np.nan, dtype=np.float32)
+
+    for i, x in enumerate(xs):
+        foreground = np.flatnonzero(mask[:, x] > 0)
+
+        if foreground.size:
+            ys[i] = float(foreground[-1])
+
+    return xs, ys
+
+
+def _continuous_runs(flags):
+    """Return (start,end) runs of True values."""
+    flags = np.asarray(flags, dtype=bool)
+
+    if flags.size == 0:
+        return []
+
+    padded = np.pad(flags.astype(np.uint8), (1, 1))
+    diff = np.diff(padded.astype(np.int16))
+
+    starts = np.where(diff == 1)[0]
+    ends = np.where(diff == -1)[0] - 1
+
+    return list(zip(starts, ends))
+
+
+def _find_cuff_span(mask, x0, x1, y0, y1, glove_h, glove_w):
+    """
+    Determine which part of the bottom outline is the actual cuff.
+
+    Important:
+    The left/right vertical side of the glove is NOT considered cuff.
+    We first find a continuous horizontal run of columns whose bottom-most
+    point lies sufficiently low in the glove.
+    """
+    xs, profile = _bottom_profile(mask, x0, x1)
+
+    valid = np.isfinite(profile)
+
+    lower_limit = (
+        y0 + MIN_CUFF_COLUMN_DEPTH * glove_h
+    )
+
+    low_columns = valid & (profile >= lower_limit)
+
+    runs = _continuous_runs(low_columns)
+
+    if not runs:
+        return None
+
+    # Prefer a broad run close to the bottom of the image.
+    candidates = []
+
+    for start, end in runs:
+        width = end - start + 1
+
+        if width < max(8, int(round(0.10 * glove_w))):
+            continue
+
+        segment_y = profile[start:end + 1]
+        segment_y = segment_y[np.isfinite(segment_y)]
+
+        if segment_y.size == 0:
+            continue
+
+        mean_y = float(np.mean(segment_y))
+
+        width_score = width / max(float(glove_w), 1.0)
+        bottom_score = (
+            mean_y - y0
+        ) / max(float(glove_h), 1.0)
+
+        score = (
+            0.55 * width_score
+            + 0.45 * bottom_score
+        )
+
+        candidates.append(
+            (score, start, end)
+        )
+
+    if not candidates:
+        return None
+
+    _, start, end = max(
+        candidates,
+        key=lambda item: item[0],
+    )
+
+    cuff_left = int(xs[start])
+    cuff_right = int(xs[end])
+
+    # Trim endpoints: this is the key side-edge rejection.
+    trim = max(
+        3,
+        int(round(
+            CUFF_SIDE_TRIM_FRAC
+            * (cuff_right - cuff_left + 1)
+        )),
+    )
+
+    if cuff_right - cuff_left > 2 * trim + 5:
+        cuff_left += trim
+        cuff_right -= trim
+
+    return (
+        cuff_left,
+        cuff_right,
+    )
+
+
+def _cuff_profile(mask, cuff_left, cuff_right):
+    """
+    Extract bottom cuff outline and smooth it.
+    """
+    xs, raw = _bottom_profile(
+        mask,
+        cuff_left,
+        cuff_right,
+    )
+
+    valid = np.flatnonzero(
+        np.isfinite(raw)
+    )
+
+    if valid.size < 3:
+        return xs, raw, raw
+
+    missing = np.flatnonzero(
+        ~np.isfinite(raw)
+    )
+
+    if missing.size:
+        raw[missing] = np.interp(
+            missing,
+            valid,
+            raw[valid],
+        )
+
+    width = cuff_right - cuff_left + 1
+
+    smooth_window = max(
+        5,
+        int(round(
+            PROFILE_SMOOTH_FRAC * width
+        )),
+    )
+
+    smooth = _smooth_1d(
+        raw,
+        smooth_window,
+    )
+
+    return xs, raw, smooth
+
+
+# ============================================================
+# BEAD BAND CREATION
+# ============================================================
+
+def _build_bead_band(
+    mask,
+    xs,
+    profile,
+    glove_h,
+    glove_w,
+):
+    """
+    Build a curved band INSIDE the bottom outline.
+
+    Instead of searching the entire lower glove, each x-column gets its own
+    local cuff y-coordinate. This follows curved / tilted cuffs.
+
+    Example:
+
+        glove material
+        █████████████████
+        █  BEAD BAND   █
+        █████████████████
+        ----------------- <- outer cuff profile
+
+    """
+    band = np.zeros_like(mask)
+
+    inner_offset = max(
+        2,
+        int(round(
+            BEAD_BAND_INNER_FRAC * glove_h
+        )),
+    )
+
+    outer_offset = max(
+        inner_offset + 3,
+        int(round(
+            BEAD_BAND_OUTER_FRAC * glove_h
+        )),
+    )
+
+    h, w = mask.shape[:2]
+
+    for x, bottom_y in zip(xs, profile):
+        if not np.isfinite(bottom_y):
+            continue
+
+        x = int(x)
+        y = int(round(bottom_y))
+
+        # Search upward from bottom contour.
+        y_top = max(
+            0,
+            y - outer_offset,
+        )
+
+        y_bottom = max(
+            0,
+            y - inner_offset,
+        )
+
+        if (
+            0 <= x < w
+            and y_bottom >= y_top
+        ):
+            band[
+                y_top:y_bottom + 1,
+                x
+            ] = 255
+
+    # Keep only actual glove material.
+    band = cv2.bitwise_and(
+        band,
+        mask,
+    )
+
+    return (
+        band,
+        inner_offset,
+        outer_offset,
+    )
+
+
+# ============================================================
+# IMAGE EDGE MAP
+# ============================================================
+
+def _coarse_edge_map(processed, mask, glove_w):
+    gray = None
+
+    if processed is not None:
+        gray = processed.get("gray")
+
+    if (
+        gray is None
+        or gray.shape[:2] != mask.shape[:2]
+    ):
+        return None
+
+    # Suppress glove wrinkles and cotton texture as much as possible.
+    sigma = max(
+        1.4,
+        0.006 * glove_w,
+    )
+
+    blurred = cv2.GaussianBlur(
+        gray,
+        (0, 0),
+        sigmaX=sigma,
+        sigmaY=sigma,
+    )
+
+    edges = cv2.Canny(
+        blurred,
+        CANNY_LOW,
+        CANNY_HIGH,
+    )
+
+    return cv2.bitwise_and(
+        edges,
+        mask,
+    )
+
+
+# ============================================================
+# BEAD SUPPORT BY COLUMN
+# ============================================================
+
+def _column_bead_support(
+    edges,
+    band,
+    xs,
+):
+    """
+    For each cuff x-column, estimate whether a bead edge is visible inside
+    the curved cuff band.
+
+    Output is 0..1.
+    """
+    support = np.zeros(
+        len(xs),
+        dtype=np.float32,
+    )
+
+    if edges is None:
+        return support
+
+    h, w = edges.shape[:2]
+
+    horizontal_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (9, 3),
+    )
+
+    # Connect small gaps in the rolled-bead edge while preserving major missing
+    # sections.
+    bead_edges = cv2.morphologyEx(
+        cv2.bitwise_and(edges, band),
+        cv2.MORPH_CLOSE,
+        horizontal_kernel,
+    )
+
+    # Use a horizontal-oriented gradient-like support:
+    # count edge pixels inside a small x neighborhood.
+    radius = 3
+
+    for i, x in enumerate(xs):
+        x = int(x)
+
+        xa = max(
+            0,
+            x - radius,
+        )
+        xb = min(
+            w,
+            x + radius + 1,
+        )
+
+        local_band = band[:, xa:xb] > 0
+
+        band_pixels = int(
+            np.count_nonzero(local_band)
+        )
+
+        if band_pixels == 0:
+            support[i] = 0.0
+            continue
+
+        local_edges = bead_edges[:, xa:xb] > 0
+
+        edge_pixels = int(
+            np.count_nonzero(
+                local_edges & local_band
+            )
+        )
+
+        # Normalize against neighborhood width rather than entire band area.
+        # One bead line needs only a few edge pixels per column.
+        normalized = (
+            edge_pixels
+            / max(
+                2.0 * (xb - xa),
+                1.0,
+            )
+        )
+
+        support[i] = float(np.clip(
+            normalized,
+            0.0,
+            1.0,
+        ))
+
+    # Smooth support along cuff.
+    support = _smooth_1d(
+        support,
+        max(
+            5,
+            int(round(0.025 * len(xs))),
+        ),
+    )
+
+    return support
+
+
+# ============================================================
+# NORMALIZE RELATIVE TO THE REST OF THE CUFF
+# ============================================================
+
+def _relative_support_score(support):
+    """
+    A key improvement:
+
+    Do NOT require one universal intensity threshold.
+
+    Instead, determine what "normal bead evidence" looks like in THIS glove
+    and compare local segments with the stronger parts of the same cuff.
+
+    This is much more robust across latex / nitrile / cotton.
+    """
+    if support.size == 0:
+        return support, 0.0
+
+    positive = support[support > 0]
+
+    if positive.size == 0:
+        return np.zeros_like(support), 0.0
+
+    reference = max(
+        float(
+            np.percentile(
+                support,
+                75,
+            )
+        ),
+        0.05,
+    )
+
+    relative = np.clip(
+        support / reference,
+        0.0,
+        1.0,
+    )
+
+    return relative.astype(np.float32), reference
+
+
+# ============================================================
+# MISSING SEGMENT DETECTION
+# ============================================================
+
+def _find_missing_segments(
+    xs,
+    relative_support,
+    cuff_width,
+    glove_w,
+):
+    """
+    Find sections where bead evidence becomes much weaker than the rest of
+    the cuff.
+    """
     if len(xs) == 0:
-        return result
+        return []
 
-    x0, x1 = int(xs.min()), int(xs.max())
-    y0, y1 = int(ys.min()), int(ys.max())
-    gh = max(1, y1 - y0 + 1)
-    gw = max(1, x1 - x0 + 1)
+    weak = (
+        relative_support
+        < WEAK_SUPPORT_THRESHOLD
+    )
 
-    # Cuff/bead is expected near the lower part of the glove, but not exactly at
-    # the silhouette border where the background transition dominates.
-    band_top = y0 + int(0.68 * gh)
-    band_bottom = min(y1, y0 + int(0.96 * gh))
-    if band_bottom <= band_top + 3:
-        return result
+    # Don't use the first/last few columns of the cuff profile.
+    edge_guard = max(
+        3,
+        int(round(0.04 * len(xs))),
+    )
 
-    # Horizontal ridge -> strong vertical intensity gradient (Sobel dy).
-    grad_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
-    grad_y = np.abs(grad_y)
+    if len(weak) > 2 * edge_guard:
+        weak[:edge_guard] = False
+        weak[-edge_guard:] = False
 
-    band_mask = mask[band_top:band_bottom + 1, x0:x1 + 1] > 0
-    band_grad = grad_y[band_top:band_bottom + 1, x0:x1 + 1].copy()
-    band_grad[~band_mask] = 0
+    runs = _continuous_runs(
+        weak
+    )
 
-    # Ignore side edges of the cuff to avoid silhouette boundary gradients.
-    side_trim = max(2, int(0.06 * gw))
-    if band_grad.shape[1] > 2 * side_trim:
-        band_grad[:, :side_trim] = 0
-        band_grad[:, -side_trim:] = 0
+    min_width = max(
+        4,
+        int(round(
+            MIN_MISSING_WIDTH_FRAC * cuff_width
+        )),
+    )
 
-    # Find the row with strongest sustained horizontal ridge evidence.
-    row_strength = np.sum(band_grad, axis=1)
-    if row_strength.size == 0 or float(row_strength.max()) <= 0:
-        return result
-    local_row = int(np.argmax(row_strength))
-    bead_y = band_top + local_row
+    max_width = max(
+        min_width,
+        int(round(
+            MAX_MISSING_WIDTH_FRAC * cuff_width
+        )),
+    )
 
-    # Aggregate a small vertical window because the bead/hem has thickness.
-    radius = max(2, int(0.008 * max(mask.shape)))
-    r0 = max(band_top, bead_y - radius)
-    r1 = min(band_bottom, bead_y + radius)
-    profile = grad_y[r0:r1 + 1, x0:x1 + 1].max(axis=0)
-    cuff_present = (mask[r0:r1 + 1, x0:x1 + 1] > 0).any(axis=0)
+    candidates = []
 
-    valid_idx = np.where(cuff_present)[0]
-    if valid_idx.size < max(20, int(0.20 * gw)):
-        return result
-    left, right = int(valid_idx.min()), int(valid_idx.max())
-    profile = profile[left:right + 1]
-    cuff_present = cuff_present[left:right + 1]
+    for start, end in runs:
+        width = end - start + 1
 
-    valid_values = profile[cuff_present]
-    if valid_values.size == 0:
-        return result
-    edge_threshold = max(14.0, float(np.percentile(valid_values, 58)))
-    bead_present = (profile >= edge_threshold) & cuff_present
+        if width < min_width:
+            continue
 
-    # Smooth very tiny gaps; manufacturing defects should span more than a few pixels.
-    arr = bead_present.astype(np.uint8)[None, :] * 255
-    close_width = max(3, int(0.018 * max(1, len(bead_present))))
-    if close_width % 2 == 0:
-        close_width += 1
-    arr = cv2.morphologyEx(arr, cv2.MORPH_CLOSE,
-                           cv2.getStructuringElement(cv2.MORPH_RECT, (close_width, 1)))
-    bead_present = arr[0] > 0
+        if width > max_width:
+            continue
 
-    # Restrict gap analysis to actual cuff span.
-    span = len(bead_present)
-    coverage = float(np.mean(bead_present)) if span else 0.0
-    longest_gap, gap_start, gap_end = _longest_false_run(bead_present)
-    gap_ratio = longest_gap / max(span, 1)
+        local_support = relative_support[
+            start:end + 1
+        ]
 
-    # A true incomplete bead normally has some bead present + a meaningful local gap.
-    # If almost no ridge exists at all, confidence is lower because lighting/texture may
-    # simply make the bead invisible.
-    gap_signal = np.clip((gap_ratio - 0.05) / 0.25, 0.0, 1.0)
-    coverage_context = np.clip((coverage - 0.20) / 0.35, 0.0, 1.0)
-    brokenness = np.clip((0.90 - coverage) / 0.55, 0.0, 1.0)
-    ridge_score = float(np.clip(
-        0.62 * gap_signal + 0.20 * coverage_context + 0.18 * brokenness,
-        0.0, 1.0,
+        mean_support = float(
+            np.mean(local_support)
+        )
+
+        min_support = float(
+            np.min(local_support)
+        )
+
+        missing_strength = float(np.clip(
+            (
+                WEAK_SUPPORT_THRESHOLD
+                - mean_support
+            )
+            / max(
+                WEAK_SUPPORT_THRESHOLD,
+                1e-6,
+            ),
+            0.0,
+            1.0,
+        ))
+
+        width_score = float(np.clip(
+            width
+            / max(
+                0.14 * cuff_width,
+                1.0,
+            ),
+            0.0,
+            1.0,
+        ))
+
+        score = float(
+            0.76 * missing_strength
+            + 0.24 * width_score
+        )
+
+        candidates.append({
+            "source": "missing_bead_segment",
+            "start_index": int(start),
+            "end_index": int(end),
+            "x_start": int(xs[start]),
+            "x_end": int(xs[end]),
+            "width_px": int(width),
+            "mean_relative_support": mean_support,
+            "minimum_relative_support": min_support,
+            "missing_strength": missing_strength,
+            "width_score": width_score,
+            "geometry_score": score,
+        })
+
+    candidates.sort(
+        key=lambda item: item["geometry_score"],
+        reverse=True,
+    )
+
+    return candidates
+
+
+# ============================================================
+# OUTER PROFILE SHAPE SUPPORT
+# ============================================================
+
+def _profile_irregularity(
+    profile,
+    start,
+    end,
+    cuff_width,
+):
+    """
+    Missing beading can also produce an uneven outside cuff boundary.
+
+    This is secondary evidence only.
+    """
+    if profile is None or len(profile) < 5:
+        return 0.0, 0.0
+
+    baseline_window = max(
+        7,
+        int(round(
+            0.12 * cuff_width
+        )),
+    )
+
+    baseline = _smooth_1d(
+        profile,
+        baseline_window,
+    )
+
+    residual = np.abs(
+        profile - baseline
+    )
+
+    local = residual[
+        start:end + 1
+    ]
+
+    if local.size == 0:
+        return 0.0, 0.0
+
+    peak = float(
+        np.max(local)
+    )
+
+    robust_reference = max(
+        float(
+            np.percentile(
+                residual,
+                70,
+            )
+        ),
+        1.0,
+    )
+
+    score = float(np.clip(
+        (
+            float(np.mean(local))
+            - robust_reference
+        )
+        / max(
+            2.0 * robust_reference,
+            1.0,
+        ),
+        0.0,
+        1.0,
     ))
 
-    # Analyse the true lower silhouette. A complete cuff opening is approximately
-    # straight or gently curved; incomplete beading produces a deep local notch or
-    # a substantial run that ends well above the two outer cuff edges.
-    lower_y = np.full(gw, np.nan, dtype=np.float32)
-    for col in range(gw):
-        col_ys = np.flatnonzero(mask[:, x0 + col] > 0)
-        if col_ys.size:
-            lower_y[col] = float(col_ys[-1])
+    return peak, score
 
-    trim = max(2, int(0.08 * gw))
-    valid_lower = np.isfinite(lower_y)
-    core_idx = np.flatnonzero(valid_lower)[trim: max(trim, np.count_nonzero(valid_lower) - trim)]
-    notch_depth = notch_ratio = notch_width_ratio = 0.0
-    notch_start = notch_end = 0
-    silhouette_score = 0.0
-    if core_idx.size >= 20:
-        lo, hi = int(core_idx[0]), int(core_idx[-1])
-        profile = lower_y[lo:hi + 1]
-        finite = np.isfinite(profile)
-        if np.count_nonzero(finite) >= 20:
-            # Interpolate rare missing columns before smoothing.
-            xx = np.arange(profile.size)
-            profile[~finite] = np.interp(xx[~finite], xx[finite], profile[finite])
-            profile = _smooth_1d(profile, max(5, int(0.025 * gw)))
-            edge_n = max(4, int(0.16 * profile.size))
-            edge_level = float(np.median(np.r_[profile[:edge_n], profile[-edge_n:]]))
-            depth = edge_level - profile
-            notch_depth = float(max(0.0, depth.max()))
-            notch_ratio = notch_depth / gh
-            deep = depth >= max(0.025 * gh, 0.35 * notch_depth)
-            run, rs, re = _longest_false_run(~deep)
-            notch_width_ratio = run / max(profile.size, 1)
-            notch_start, notch_end = lo + rs, lo + re
-            depth_signal = np.clip((notch_ratio - 0.025) / 0.10, 0.0, 1.0)
-            width_signal = np.clip((notch_width_ratio - 0.06) / 0.28, 0.0, 1.0)
-            silhouette_score = float(0.68 * depth_signal + 0.32 * width_signal)
 
-    score = float(max(ridge_score, silhouette_score))
-    ridge_detected = ridge_score >= 0.50 and gap_ratio >= 0.08 and coverage >= 0.18
-    notch_detected = silhouette_score >= 0.50 and notch_ratio >= 0.035 and notch_width_ratio >= 0.07
-    detected = ridge_detected or notch_detected
+# ============================================================
+# LOCALIZE DEFECT
+# ============================================================
 
-    defect_mask = np.zeros_like(mask)
+def _defect_region(
+    mask,
+    band,
+    candidate,
+    profile,
+    xs,
+    glove_h,
+    glove_w,
+):
+    """
+    Create a tight region around the missing bead span following the cuff.
+    """
+    start = candidate["start_index"]
+    end = candidate["end_index"]
+
+    x_start = int(xs[start])
+    x_end = int(xs[end])
+
+    segment_y = profile[
+        start:end + 1
+    ]
+
+    finite = segment_y[
+        np.isfinite(segment_y)
+    ]
+
+    if finite.size == 0:
+        return np.zeros_like(mask), None
+
+    bottom_y = int(
+        round(
+            np.max(finite)
+        )
+    )
+
+    upper_pad = max(
+        5,
+        int(round(
+            0.075 * glove_h
+        )),
+    )
+
+    lower_pad = max(
+        2,
+        int(round(
+            0.015 * glove_h
+        )),
+    )
+
+    horizontal_pad = max(
+        3,
+        int(round(
+            0.012 * glove_w
+        )),
+    )
+
+    xa = max(
+        0,
+        x_start - horizontal_pad,
+    )
+
+    xb = min(
+        mask.shape[1] - 1,
+        x_end + horizontal_pad,
+    )
+
+    ya = max(
+        0,
+        bottom_y - upper_pad,
+    )
+
+    yb = min(
+        mask.shape[0] - 1,
+        bottom_y + lower_pad,
+    )
+
+    region = np.zeros_like(mask)
+
+    # Use cuff/bead band plus a little actual glove area.
+    local = np.zeros_like(mask)
+    local[
+        ya:yb + 1,
+        xa:xb + 1,
+    ] = 255
+
+    region = cv2.bitwise_and(
+        local,
+        mask,
+    )
+
+    bbox = (
+        xa,
+        ya,
+        xb - xa + 1,
+        yb - ya + 1,
+    )
+
+    return region, bbox
+
+
+# ============================================================
+# MAIN DETECTOR
+# ============================================================
+
+def detect_incomplete_beading(
+    processed: dict,
+    segmentation: dict,
+) -> dict:
+    """
+    Detect incomplete beading using only the bottom cuff outline/band.
+    """
+    result = _empty_result()
+
+    if segmentation is None:
+        return result
+
+    mask = segmentation.get(
+        "glove_mask"
+    )
+
+    if (
+        mask is None
+        or np.count_nonzero(mask) < 500
+    ):
+        return result
+
+    mask = _binary(
+        mask
+    )
+
+    bounds = _bounds(
+        mask
+    )
+
+    if bounds is None:
+        return result
+
+    (
+        x0,
+        y0,
+        x1,
+        y1,
+        glove_w,
+        glove_h,
+    ) = bounds
+
+    # --------------------------------------------------------
+    # 1. Full glove outline
+    # --------------------------------------------------------
+    outline_mask, contour = _make_outline(
+        mask,
+        thickness=2,
+    )
+
+    if contour is None:
+        return result
+
+    # --------------------------------------------------------
+    # 2. Actual bottom cuff span
+    # --------------------------------------------------------
+    cuff_span = _find_cuff_span(
+        mask,
+        x0,
+        x1,
+        y0,
+        y1,
+        glove_h,
+        glove_w,
+    )
+
+    if cuff_span is None:
+        result["measurements"] = {
+            "reason": "bottom_cuff_span_not_found",
+        }
+        return result
+
+    cuff_left, cuff_right = cuff_span
+
+    cuff_width = max(
+        1,
+        cuff_right - cuff_left + 1,
+    )
+
+    # --------------------------------------------------------
+    # 3. Curved cuff profile
+    # --------------------------------------------------------
+    xs, raw_profile, smooth_profile = _cuff_profile(
+        mask,
+        cuff_left,
+        cuff_right,
+    )
+
+    if (
+        smooth_profile.size < 7
+        or np.count_nonzero(
+            np.isfinite(smooth_profile)
+        ) < 7
+    ):
+        result["measurements"] = {
+            "reason": "cuff_profile_too_small",
+        }
+        return result
+
+    # --------------------------------------------------------
+    # 4. Inner bead band following contour
+    # --------------------------------------------------------
+    bead_band, inner_offset, outer_offset = _build_bead_band(
+        mask,
+        xs,
+        smooth_profile,
+        glove_h,
+        glove_w,
+    )
+
+    # --------------------------------------------------------
+    # 5. Image edges only inside bead band
+    # --------------------------------------------------------
+    edges = _coarse_edge_map(
+        processed,
+        mask,
+        glove_w,
+    )
+
+    support = _column_bead_support(
+        edges,
+        bead_band,
+        xs,
+    )
+
+    relative_support, support_reference = _relative_support_score(
+        support
+    )
+
+    # --------------------------------------------------------
+    # 6. Find missing / interrupted bead sections
+    # --------------------------------------------------------
+    candidates = _find_missing_segments(
+        xs,
+        relative_support,
+        cuff_width,
+        glove_w,
+    )
+
+    # Add outer-profile irregularity as secondary evidence.
+    ranked = []
+
+    for candidate in candidates:
+        item = dict(candidate)
+
+        peak_irregularity, irregularity_score = _profile_irregularity(
+            smooth_profile,
+            item["start_index"],
+            item["end_index"],
+            cuff_width,
+        )
+
+        item["profile_peak_irregularity_px"] = float(
+            peak_irregularity
+        )
+
+        item["profile_irregularity_score"] = float(
+            irregularity_score
+        )
+
+        # Missing bead evidence dominates.
+        score = float(np.clip(
+            0.84 * item["geometry_score"]
+            + 0.16 * irregularity_score,
+            0.0,
+            1.0,
+        ))
+
+        item["score"] = score
+
+        if score >= MIN_CANDIDATE_SCORE:
+            ranked.append(item)
+
+    ranked.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
+
+    best = (
+        ranked[0]
+        if ranked
+        else None
+    )
+
+    # --------------------------------------------------------
+    # 7. Final decision
+    # --------------------------------------------------------
+    if best is None:
+        score = 0.0
+        detected = False
+
+    else:
+        score = float(
+            best["score"]
+        )
+
+        # A substantial, very weak section should cross decision threshold.
+        strong_missing = (
+            best["missing_strength"] >= 0.55
+            and best["width_px"] >= max(
+                4,
+                int(round(
+                    0.04 * cuff_width
+                )),
+            )
+        )
+
+        if strong_missing:
+            score = max(
+                score,
+                0.56,
+            )
+
+        detected = bool(
+            score >= DETECTION_THRESHOLD
+        )
+
+    # --------------------------------------------------------
+    # 8. Localize only the bottom cuff defect
+    # --------------------------------------------------------
+    defect_mask = np.zeros_like(
+        mask
+    )
+
     bbox = None
-    if notch_detected:
-        gx0 = x0 + notch_start
-        gx1 = x0 + notch_end
-        gy0 = max(y0, int(y1 - max(notch_depth, 0.08 * gh)))
-        gy1 = y1
-        cv2.rectangle(defect_mask, (gx0, gy0), (gx1, gy1), 255, -1)
-        bbox = (gx0, gy0, max(1, gx1 - gx0 + 1), max(1, gy1 - gy0 + 1))
-    elif ridge_detected and longest_gap > 0:
-        gx0 = x0 + left + gap_start
-        gx1 = x0 + left + gap_end
-        gy0 = max(y0, bead_y - max(6, radius * 2))
-        gy1 = min(y1, bead_y + max(6, radius * 2))
-        cv2.rectangle(defect_mask, (gx0, gy0), (gx1, gy1), 255, -1)
-        bbox = (gx0, gy0, max(1, gx1 - gx0 + 1), max(1, gy1 - gy0 + 1))
-    defect_mask = cv2.bitwise_and(defect_mask, mask)
 
-    area_pct = 100.0 * np.count_nonzero(defect_mask) / max(np.count_nonzero(mask), 1)
+    if detected and best is not None:
+        defect_mask, bbox = _defect_region(
+            mask,
+            bead_band,
+            best,
+            smooth_profile,
+            xs,
+            glove_h,
+            glove_w,
+        )
+
+    area_pct = (
+        100.0
+        * np.count_nonzero(defect_mask)
+        / max(
+            np.count_nonzero(mask),
+            1,
+        )
+    )
+
+    # --------------------------------------------------------
+    # 9. Diagnostics
+    # --------------------------------------------------------
+    measurements = {
+        "area_pct": round(
+            float(area_pct),
+            3,
+        ),
+
+        "cuff_left_x": int(
+            cuff_left
+        ),
+
+        "cuff_right_x": int(
+            cuff_right
+        ),
+
+        "cuff_width_px": int(
+            cuff_width
+        ),
+
+        "bead_band_inner_offset_px": int(
+            inner_offset
+        ),
+
+        "bead_band_outer_offset_px": int(
+            outer_offset
+        ),
+
+        "bead_support_reference": round(
+            float(support_reference),
+            4,
+        ),
+
+        "mean_bead_support": round(
+            float(
+                np.mean(
+                    relative_support
+                )
+            ),
+            4,
+        ) if relative_support.size else 0.0,
+
+        "minimum_bead_support": round(
+            float(
+                np.min(
+                    relative_support
+                )
+            ),
+            4,
+        ) if relative_support.size else 0.0,
+
+        "raw_missing_segments": int(
+            len(candidates)
+        ),
+
+        "accepted_candidates": int(
+            len(ranked)
+        ),
+
+        "beading_candidate_found": bool(
+            best is not None
+        ),
+
+        "candidate_source": (
+            best["source"]
+            if best is not None
+            else None
+        ),
+
+        "candidate_x_start": (
+            int(best["x_start"])
+            if best is not None
+            else None
+        ),
+
+        "candidate_x_end": (
+            int(best["x_end"])
+            if best is not None
+            else None
+        ),
+
+        "candidate_width_px": (
+            int(best["width_px"])
+            if best is not None
+            else None
+        ),
+
+        "candidate_mean_support": (
+            round(
+                float(
+                    best[
+                        "mean_relative_support"
+                    ]
+                ),
+                4,
+            )
+            if best is not None
+            else None
+        ),
+
+        "candidate_minimum_support": (
+            round(
+                float(
+                    best[
+                        "minimum_relative_support"
+                    ]
+                ),
+                4,
+            )
+            if best is not None
+            else None
+        ),
+
+        "missing_strength": (
+            round(
+                float(
+                    best[
+                        "missing_strength"
+                    ]
+                ),
+                4,
+            )
+            if best is not None
+            else None
+        ),
+
+        "profile_peak_irregularity_px": (
+            round(
+                float(
+                    best[
+                        "profile_peak_irregularity_px"
+                    ]
+                ),
+                2,
+            )
+            if best is not None
+            else None
+        ),
+
+        "profile_irregularity_score": (
+            round(
+                float(
+                    best[
+                        "profile_irregularity_score"
+                    ]
+                ),
+                4,
+            )
+            if best is not None
+            else None
+        ),
+
+        "candidate_score": (
+            round(
+                float(
+                    best["score"]
+                ),
+                4,
+            )
+            if best is not None
+            else None
+        ),
+    }
+
     result.update({
-        "detected": bool(detected),
-        "detection_score": score,
+        "detected": bool(
+            detected
+        ),
+        "detection_score": round(
+            float(score),
+            6,
+        ),
         "bounding_box": bbox,
         "mask": defect_mask,
-        "measurements": {
-            "area_pct": round(float(area_pct), 3),
-            "bead_y": int(bead_y),
-            "bead_coverage": round(coverage, 4),
-            "longest_gap_px": int(longest_gap),
-            "longest_gap_ratio": round(float(gap_ratio), 4),
-            "edge_threshold": round(float(edge_threshold), 2),
-            "ridge_score": round(ridge_score, 4),
-            "cuff_notch_depth_px": round(notch_depth, 2),
-            "cuff_notch_depth_ratio": round(notch_ratio, 4),
-            "cuff_notch_width_ratio": round(notch_width_ratio, 4),
-            "silhouette_score": round(silhouette_score, 4),
-        },
+        "measurements": measurements,
+
+        # Extra debug masks are inside measurements only as simple metadata is
+        # preferred by evaluate.py. Use debug_incomplete_beading() below when
+        # visual debugging is needed.
     })
+
     return result
+
+
+# ============================================================
+# OPTIONAL DEBUG VISUALIZATION
+# ============================================================
+
+def debug_incomplete_beading(
+    processed: dict,
+    segmentation: dict,
+):
+    """
+    Return a debug image showing:
+
+    YELLOW = complete glove outline
+    CYAN   = detected bottom cuff outline
+    BLUE   = bead search band
+    RED    = detected incomplete bead area
+
+    This helper is NOT required by evaluate.py.
+    """
+    original = None
+
+    if processed is not None:
+        original = processed.get("original")
+
+    if original is None:
+        return None
+
+    output = original.copy()
+
+    mask = segmentation.get("glove_mask")
+    if mask is None:
+        return output
+
+    mask = _binary(mask)
+
+    bounds = _bounds(mask)
+    if bounds is None:
+        return output
+
+    x0, y0, x1, y1, glove_w, glove_h = bounds
+
+    outline, contour = _make_outline(mask, thickness=2)
+
+    # Full outline: yellow.
+    output[outline > 0] = (0, 255, 255)
+
+    cuff_span = _find_cuff_span(
+        mask,
+        x0,
+        x1,
+        y0,
+        y1,
+        glove_h,
+        glove_w,
+    )
+
+    if cuff_span is not None:
+        cuff_left, cuff_right = cuff_span
+
+        xs, _, profile = _cuff_profile(
+            mask,
+            cuff_left,
+            cuff_right,
+        )
+
+        if len(xs) and len(profile):
+            # Cuff outline: cyan.
+            points = []
+
+            for x, y in zip(xs, profile):
+                if np.isfinite(y):
+                    points.append([
+                        int(x),
+                        int(round(y)),
+                    ])
+
+            if len(points) >= 2:
+                cv2.polylines(
+                    output,
+                    [np.asarray(points, dtype=np.int32)],
+                    False,
+                    (255, 255, 0),
+                    3,
+                    cv2.LINE_AA,
+                )
+
+            band, _, _ = _build_bead_band(
+                mask,
+                xs,
+                profile,
+                glove_h,
+                glove_w,
+            )
+
+            # Light blue overlay for band.
+            overlay = output.copy()
+            overlay[band > 0] = (255, 120, 0)
+
+            output = cv2.addWeighted(
+                overlay,
+                0.25,
+                output,
+                0.75,
+                0,
+            )
+
+    result = detect_incomplete_beading(
+        processed,
+        segmentation,
+    )
+
+    defect_mask = result.get("mask")
+
+    if defect_mask is not None and np.any(defect_mask):
+        overlay = output.copy()
+        overlay[defect_mask > 0] = (0, 0, 255)
+
+        output = cv2.addWeighted(
+            overlay,
+            0.45,
+            output,
+            0.55,
+            0,
+        )
+
+    bbox = result.get("bounding_box")
+
+    if bbox is not None:
+        x, y, w, h = [int(v) for v in bbox]
+
+        cv2.rectangle(
+            output,
+            (x, y),
+            (x + w, y + h),
+            (0, 0, 255),
+            3,
+        )
+
+    return output
