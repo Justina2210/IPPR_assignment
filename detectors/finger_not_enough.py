@@ -92,11 +92,16 @@ complete 4-main-finger hand) was silently read as "complete".
    found fingers' own median length, so a gap whose local surface still
    happens to sit unusually high renders a legible box regardless.
 
-4. detection_score blends how abnormal the worst gap's width is with a
-   floor based on how many main fingers are missing by count (mirroring
-   the previous version's fixed 0.75/1.0 tiers, since a very short
-   median spacing sample - only 2-3 main peaks found - can make the gap
-   ratio alone noisy).
+4. detection_score on this path is a CATEGORY VERDICT, not a continuous
+   confidence measure: 0.75 if exactly one main finger is missing (3 of
+   4 found), 1.0 if two or more are missing (FINGER_COUNT_SCORE_
+   ONE_MISSING / FINGER_COUNT_SCORE_SEVERE). worst_gap["ratio"] (how
+   abnormal the located gap's own width is) was tried as a second,
+   blended-in signal, but measured directly against this dataset it
+   does not discriminate real positives from false positives - see
+   FINGER_COUNT_SCORE_ONE_MISSING's comment - so it was dropped from
+   the score. It's still computed for localisation and still reported
+   in measurements (gap_type, gap_ratio) for the report.
 
 5. If all 4 main fingers ARE found, there's no missing slot to
    localise - but one of the four could still be present and simply
@@ -203,14 +208,6 @@ STRONG_INTERIOR_SINGLE_RATIO = 1.3
 
 # --- Gap-based localisation of a missing/fused finger ---
 
-# A gap (between two adjacent peaks, or from an outermost peak to the
-# glove's own bounding-box edge) counts as "contains a missing finger"
-# once it's this many times wider than the median gap.
-GAP_RATIO_THRESHOLD = 1.6
-
-# Gap ratio at/above which detection_score saturates to 1.0.
-GAP_SEVERE_RATIO = 2.4
-
 # The reported box is the middle fraction of the gap's x-range, i.e.
 # GAP_TRIM_FRAC is trimmed off *each* side so the box doesn't overlap
 # the genuine fingers flanking it.
@@ -222,8 +219,33 @@ GAP_TRIM_FRAC = 0.2
 # box instead of a sliver.
 MIN_GAP_BOX_HEIGHT_FRACTION = 0.6
 
-DETECTION_SCORE_ONE_MISSING = 0.75   # exactly 4 of 5 fingers found
-DETECTION_SCORE_SEVERE = 1.0         # 3 or fewer fingers found
+# detection_score on the gap-localisation path is a CATEGORY VERDICT,
+# not a continuous confidence measure: it depends only on how many main
+# fingers are missing by count (a direct peak count against the hard
+# prior). worst_gap["ratio"] (how much the localised gap's own width
+# stands out) is still computed for localisation and still reported in
+# measurements (gap_type, gap_ratio) for the report, but it is NOT
+# folded into the score.
+#
+# A blended version - detection_score = 0.7*count_score +
+# 0.3*gap_score, gap_score derived from worst_gap["ratio"] against a
+# GAP_RATIO_THRESHOLD/GAP_SEVERE_RATIO window - was tried and measured
+# directly against this dataset's 19 gap-branch images (5 real
+# positives + 14 known false positives): gap_score was 0.0000 (zero
+# contribution, whatever the weight) on 4 of the 5 real positives AND
+# on 13 of the 14 false positives - the two classes' raw gap ratios
+# overlap almost completely (positives ranged 1.03-2.26, false
+# positives 0.80-1.57; the single best possible split point over all
+# 19 values only reaches 15/19 correct, and that split is fitted to
+# one data point, not a real margin). Blending it in at any weight high
+# enough to protect every real positive could not move the
+# false-positive count at all, so it was removed rather than kept as
+# measured dead weight. If a future, larger dataset's gap ratios turn
+# out to separate the classes better, GAP_RATIO_THRESHOLD/
+# GAP_SEVERE_RATIO/a gap_score term would need to be reintroduced and
+# re-measured, not just restored from history.
+FINGER_COUNT_SCORE_ONE_MISSING = 0.75   # exactly 4 of 5 fingers found
+FINGER_COUNT_SCORE_SEVERE = 1.0         # 3 or fewer fingers found
 
 # --- Secondary signal: a present-but-short finger (5 peaks found) ---
 
@@ -820,13 +842,24 @@ def detect_finger_not_enough(processed, segmentation):
     thumb_x, main_peaks = _identify_thumb(peaks, glove_mask, bx)
 
     def _whole_glove_fallback():
+        # Localisation has completely failed here (fewer than 2
+        # fingertip peaks found at all, or a thumb-only hand with zero
+        # main peaks) - there's no positional evidence to point at,
+        # just the whole glove. Reporting that as a confident 100%
+        # "detected" was backwards: a whole-glove box with no real
+        # localisation is the LEAST trustworthy result this detector
+        # can produce, not the most. Scored 0.0 / not detected, the
+        # same convention the "found all 4 main fingers, nothing looks
+        # short" branch below uses for "no usable evidence of a
+        # defect" - consistent with the rest of the file rather than a
+        # special case.
         x, y, w, h = cv2.boundingRect(contour)
         mask = np.zeros_like(glove_mask)
         cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
         return {
             "defect_name": "finger_not_enough",
-            "detected": True,
-            "detection_score": DETECTION_SCORE_SEVERE,
+            "detected": False,
+            "detection_score": 0.0,
             "algorithm": ALGORITHM,
             "bounding_box": (int(x), int(y), int(w), int(h)),
             "mask": mask,
@@ -864,12 +897,13 @@ def detect_finger_not_enough(processed, segmentation):
         x, y, w, h = located["bounding_box"]
         mask = np.zeros_like(glove_mask)
         mask[y:y + h, x:x + w] = 255
-        score = float(np.clip(1.0 - located["length_ratio"], 0.0, 1.0))
+        detection_score = float(np.clip(1.0 - located["length_ratio"], 0.0, 1.0))
+        detected = detection_score >= DETECTION_SCORE_THRESHOLD
 
         return {
             "defect_name": "finger_not_enough",
-            "detected": True,
-            "detection_score": score,
+            "detected": detected,
+            "detection_score": detection_score,
             "algorithm": ALGORITHM,
             "bounding_box": (int(x), int(y), int(w), int(h)),
             "mask": mask,
@@ -892,20 +926,22 @@ def detect_finger_not_enough(processed, segmentation):
     min_gap_height = max(5, int(MIN_GAP_BOX_HEIGHT_FRACTION * median_finger_length))
     x, y, w, h = _gap_bounding_box(worst_gap, glove_mask, min_gap_height, by + bh)
 
-    gap_score = float(np.clip(
-        (worst_gap["ratio"] - GAP_RATIO_THRESHOLD) / (GAP_SEVERE_RATIO - GAP_RATIO_THRESHOLD),
-        0.0, 1.0,
-    ))
-    count_floor = DETECTION_SCORE_ONE_MISSING if len(main_peaks) == EXPECTED_MAIN_FINGERS - 1 else DETECTION_SCORE_SEVERE
-    score = max(gap_score, count_floor)
+    # Category verdict from finger count alone - see
+    # FINGER_COUNT_SCORE_ONE_MISSING's comment for why worst_gap["ratio"]
+    # is reported (below, in measurements) but not used to compute this.
+    detection_score = (
+        FINGER_COUNT_SCORE_ONE_MISSING if len(main_peaks) == EXPECTED_MAIN_FINGERS - 1
+        else FINGER_COUNT_SCORE_SEVERE
+    )
+    detected = detection_score >= DETECTION_SCORE_THRESHOLD
 
     mask = np.zeros_like(glove_mask)
     mask[y:y + h, x:x + w] = 255
 
     return {
         "defect_name": "finger_not_enough",
-        "detected": True,
-        "detection_score": float(score),
+        "detected": detected,
+        "detection_score": float(detection_score),
         "algorithm": ALGORITHM,
         "bounding_box": (int(x), int(y), int(w), int(h)),
         "mask": mask,
