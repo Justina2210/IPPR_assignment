@@ -301,7 +301,7 @@ if __name__ == "__main__":
     """
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    dataset_root = os.path.join(base_dir, "dataset")
+    dataset_root = os.path.join(base_dir, "datasets")
 
     candidate_folders = [
         os.path.join(dataset_root, "nitrile"),

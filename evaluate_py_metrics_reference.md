@@ -41,6 +41,39 @@ a known, fixed set of outputs instead of guessing field names.
 - **Multi-class prediction** — the system never picks among all 12 defects for one
   image, only yes/no on the single selected defect.
 
+## The GUI's separate cross-test (app.py's run_full_evaluation)
+
+The "not computable" statement above is about `evaluate.py`'s own run
+specifically, not a claim that these metrics can never be produced from
+this codebase. `app.py`'s `run_full_evaluation()` (behind the "Accuracy
+evaluation (full dataset)" expander) is a genuinely different evaluation
+with a different ground-truth setup, not an extension of `evaluate.py`'s
+run:
+
+- `evaluate.py` runs each image through only the ONE detector matching
+  its own folder label — there is no case where a detector is asked
+  about an image it doesn't apply to, so there's no way to define a
+  true negative.
+- `run_full_evaluation()` instead cross-tests every implemented
+  detector against every image in the dataset (via
+  `_run_cached_detector()`), using "does this image's folder name equal
+  this detector's defect name" as ground truth for that pair. That
+  produces actual TP/FP/FN/TN counts per detector, so Accuracy /
+  Precision / Recall / F1 are computable there — but they're being
+  computed against a much less trustworthy ground truth than
+  `evaluate.py`'s: a `dirty` image labelled "not tearing" for the
+  `tearing` cross-test may still genuinely be torn as an unlabelled
+  secondary defect, which would score as a false positive despite the
+  detector being right (see the caveat text `app.py` shows directly
+  above that table).
+
+In short: `evaluate.py`'s numbers and `app.py`'s cross-test numbers are
+two different measurements answering two different questions, not one
+superseding the other. Don't read a low Accuracy/Precision from the GUI
+table as contradicting `evaluate.py`'s detection-rate figures, or vice
+versa — check which ground-truth setup a given number came from before
+comparing it to anything else.
+
 ## For app.py (single-image GUI view)
 
 Per the architecture doc's Section 9 GUI output spec, these are the fields to

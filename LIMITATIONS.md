@@ -55,12 +55,40 @@ Why they over-fire, by detector:
   `cotton/dirty/cotton_dirty_1.jpeg` score 1.00,
   `nitrile/stain/nitrile_stain_3.jpeg` score 1.00). This is called out
   explicitly in `detectors/tearing.py`'s own module docstring.
-- `finger_not_enough` keys off gap width between fingertip peaks;
-  it over-fires mainly on `touching` (fused/close fingers naturally
-  widen a gap on the *other* side) and `oversize`/`damaged_by_fold`
-  images where the glove's own silhouette geometry produces an
-  abnormally wide gap for unrelated reasons - e.g.
-  `latex/damaged_by_fold/latex_damaged_by_fold_2.png` scores 1.00.
+- `finger_not_enough`'s `detection_score` is a CATEGORY VERDICT from
+  finger count alone (`FINGER_COUNT_SCORE_ONE_MISSING` = 0.75,
+  `FINGER_COUNT_SCORE_SEVERE` = 1.0 - see
+  `detectors/finger_not_enough.py`'s module docstring, point 4) - it no
+  longer factors in how wide the localised gap itself is. A weighted
+  blend with the gap's own width (`worst_gap["ratio"]`) was built and
+  then measured directly against all 19 images that reach the
+  gap-localisation branch (the 5 real positives + these 14 false
+  positives): `gap_score` was 0.0000 on 4 of the 5 real positives *and*
+  13 of the 14 false positives, and the raw gap ratios overlap almost
+  completely between the two classes (positives 1.03-2.26, false
+  positives 0.80-1.57; the best possible single split point over all 19
+  values only reaches 15/19 correct). The blend could not move the
+  false-positive count at any weight that didn't also risk real
+  detections, so it was removed rather than kept as measured dead
+  weight - see `FINGER_COUNT_SCORE_ONE_MISSING`'s comment in the source
+  for the full measurement. `worst_gap["ratio"]` is still used to place
+  the box and is still reported in `measurements["gap_ratio"]`, just not
+  used to decide the score.
+
+  Visually auditing all 14 false positives (folder contents, not just
+  the geometry) splits them roughly in half: 6 (`cotton_touching_2`,
+  `latex_touching_1`, `latex_touching_2`, `nitrile_touching_1`,
+  `nitrile_touching_2`, `latex_damaged_by_fold_2`) show a genuinely
+  fused or folded finger on inspection - the detector's count is a
+  defensible read of the glove's real shape, it's just that "fingers
+  touching/folded" and "finger not enough" are different folder labels
+  for geometrically similar hand shapes. The other 7 (colour/
+  contamination/beading/tearing categories) are plainly intact
+  five-finger gloves where the peak-finder simply missed a finger - a
+  real detection gap, not a labelling overlap. One more
+  (`nitrile_tearing_fingertip_2`) is a curled/fisted hand pose that
+  breaks the centroid-distance peak method's core assumption
+  independent of finger count.
 - Because each detector is only ever invoked in the real pipeline
   against its own matching folder (the registry maps 1 defect → 1
   detector), none of this FP behaviour is visible in the headline
@@ -124,10 +152,12 @@ when in practice a real photo can carry secondary, unlabelled defects
 (e.g. a tearing photo that is also visibly dirty). Any such secondary
 defect that a detector correctly flags is scored as a false positive
 under this scheme, because there is no ground truth for it. This caveat
-is shown directly above the accuracy table in `app.py`
-("Ground truth comes from dataset folder labels. Images may contain
-unlabelled secondary defects, which appear as false positives...",
-`app.py:757-759`) and is why `evaluate.py`'s own docstring says
+is shown directly above the accuracy table in `app.py`, in the caption
+text inside the "Accuracy evaluation (full dataset)" expander
+(immediately above the "Run full evaluation" button): "Ground truth
+comes from dataset folder labels. Images may contain unlabelled
+secondary defects, which appear as false positives..." - and is why
+`evaluate.py`'s own docstring says
 precision/recall/confusion-matrix metrics are not its primary output
 for the single-label detection-rate run - though the GUI's separate
 full cross-test does compute them anyway, with this caveat attached.
@@ -138,11 +168,12 @@ full cross-test does compute them anyway, with this caveat attached.
 brightness distance from an estimated (border-sampled) background
 colour. This historically produced near-total segmentation failures
 when the glove and background shared a similar hue - explicitly
-documented in `segmentation.py:104-105`: "this was the root cause of
-near-total segmentation failures, e.g. a blue glove on a similarly-hued
-teal background." The fix in place (Otsu-based adaptive thresholding
-in `_otsu_threshold_mask` instead of a fixed "median + k·std" formula,
-`segmentation.py:93-129`) removed this failure mode for every photo in
+documented in `_otsu_threshold_mask()`'s own docstring in
+`segmentation.py`: "this was the root cause of near-total segmentation
+failures, e.g. a blue glove on a similarly-hued teal background." The
+fix in place (Otsu-based adaptive thresholding inside
+`_otsu_threshold_mask()`, replacing a fixed "median + k·std" formula)
+removed this failure mode for every photo in
 the current 68-image dataset - the full `evaluate.py` run and the FP
 sweep both show **0 segmentation failures out of 68 images**. This is a
 mitigation, not a guarantee: the underlying risk (foreground and
