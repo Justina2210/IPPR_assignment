@@ -1,2177 +1,478 @@
+"""Hybrid classical detector for joined/touching glove fingers.
+
+Evidence is deliberately complementary:
+1. silhouette topology: one of four normal finger valleys is missing;
+2. a long internal seam lies inside the merged finger;
+3. glove exists on both sides and the local lobe is wider than one finger.
+
+This separation helps reject missing fingers (topology only), wrinkles/folds
+(edge only), and the external glove boundary. OpenCV/Numpy only.
 """
-touching.py
------------
-Self-contained detector for the Touching / Overlapping Fingers defect.
-
-Target defect
--------------
-This detector is designed for cases where one glove finger overlaps another,
-so the outer silhouette may look like ONE broad finger while an internal seam
-is visible inside the merged finger region.
-
-It does NOT depend on finger_not_enough.py.
-
-Main evidence
--------------
-1. Detect long vertical/diagonal INTERNAL seam lines inside the upper glove.
-2. Require the seam to be safely away from the outer glove boundary.
-3. Require glove material to exist on BOTH sides of the seam.
-4. Measure the local merged-finger width around the seam.
-5. Prefer seams that begin high in the finger region and extend downward.
-6. Use silhouette/top-profile evidence only as supporting evidence.
-7. Require a precise local overlap candidate before reporting Touching.
-
-The function follows the shared detector contract used by evaluate.py:
-
-    detect_touching(processed: dict, segmentation: dict) -> dict
-"""
-
 import cv2
 import numpy as np
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
+# All values are scale-relative. TUNED-BY-EYE starting values from the six
+# supplied touching images; validate them with fp_sweep.py after dataset merge.
+FINGER_REGION_BOTTOM = 0.70
+SIDE_MARGIN_RATIO = 0.035
+EXPECTED_GAPS = 4
+MIN_GAP_DEPTH_RATIO = 0.052
+MAX_GAP_ANGLE_DEG = 115.0
+MIN_GAP_SPACING_RATIO = 0.055
 
-DETECTION_THRESHOLD = 0.50
+BOUNDARY_ERODE_RATIO = 0.012
+MIN_SEAM_LENGTH_RATIO = 0.080
+STRONG_SEAM_LENGTH_RATIO = 0.25
+MIN_VERTICALITY = 0.50
+MIN_SIDE_SUPPORT = 0.54
+MIN_BOUNDARY_DISTANCE_RATIO = 0.012
+MIN_EDGE_CONTINUITY = 0.36
 
-# Region of the glove used for overlap search.
-SEARCH_TOP_FRAC = 0.02
-SEARCH_BOTTOM_FRAC = 0.68
-SEARCH_LEFT_FRAC = 0.06
-SEARCH_RIGHT_FRAC = 0.94
+MIN_MERGED_WIDTH_RATIO = 1.15
+STRONG_MERGED_WIDTH_RATIO = 1.40
+MAX_MERGED_WIDTH_RATIO = 2.80
+MAX_UPPER_EDGE_DENSITY = 0.24
+MAX_HOUGH_LINES_TO_ANALYSE = 60
 
-# Erode the mask so the external glove outline cannot become an "internal seam".
-BOUNDARY_ERODE_FRAC = 0.012
+DETECTION_SCORE_THRESHOLD = 0.55
 
-# Canny / Hough seam settings.
-CANNY_LOW = 25
-CANNY_HIGH = 80
-
-MIN_SEAM_LENGTH_FRAC = 0.11
-STRONG_SEAM_LENGTH_FRAC = 0.24
-
-MIN_VERTICALITY = 0.60
-MAX_HORIZONTAL_SLOPE = 1.15
-
-# Internal seam must have enough distance from the external glove boundary.
-MIN_BOUNDARY_DISTANCE_FRAC = 0.012
-
-# Glove material should exist on both sides of a true overlap seam.
-SIDE_PROBE_MIN_FRAC = 0.018
-SIDE_PROBE_MAX_FRAC = 0.060
-MIN_SIDE_SUPPORT = 0.62
-
-# Candidate scoring.
-MIN_CANDIDATE_SCORE = 0.43
-
-# Top-profile smoothing / fingertip estimation.
-PROFILE_SMOOTH_FRAC = 0.018
-PEAK_MIN_SPACING_FRAC = 0.075
-MAX_FINGERTIPS = 5
+ALGORITHM = (
+    "Hybrid masked-glove geometry: missing interdigital valley plus an "
+    "adaptive-edge internal seam with two-sided material and merged-finger width"
+)
 
 
-# ============================================================
-# RESULT / BASIC HELPERS
-# ============================================================
-
-def _empty_result():
+def _empty_result(shape=None):
     return {
         "defect_name": "touching",
         "detected": False,
         "detection_score": 0.0,
-        "algorithm": (
-            "overlapping-finger internal seam + merged-finger width "
-            "+ upper-silhouette geometry"
-        ),
+        "algorithm": ALGORITHM,
         "bounding_box": None,
-        "mask": None,
+        "mask": None if shape is None else np.zeros(shape, dtype=np.uint8),
         "measurements": {},
     }
 
 
-def _largest_contour(mask):
-    contours, _ = cv2.findContours(
-        mask,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE,
-    )
-    return max(contours, key=cv2.contourArea) if contours else None
-
-
-def _smooth_1d(values, window):
-    values = np.asarray(values, dtype=np.float32)
-
-    if values.size == 0:
-        return values.copy()
-
-    window = max(3, int(window))
-    if window % 2 == 0:
-        window += 1
-
-    if window >= values.size:
-        window = values.size - 1 if values.size % 2 == 0 else values.size
-        window = max(3, window)
-
-    if window > values.size:
-        return values.copy()
-
-    pad = window // 2
-    padded = np.pad(values, (pad, pad), mode="edge")
-    kernel = np.ones(window, dtype=np.float32) / float(window)
-
-    return np.convolve(padded, kernel, mode="valid")
-
-
-def _binary_mask(mask):
-    return (mask > 0).astype(np.uint8) * 255
-
-
-def _glove_bounds(mask):
-    ys, xs = np.where(mask > 0)
-    if xs.size == 0:
-        return None
-
-    x0 = int(xs.min())
-    x1 = int(xs.max())
-    y0 = int(ys.min())
-    y1 = int(ys.max())
-
-    return (
-        x0,
-        y0,
-        x1,
-        y1,
-        max(1, x1 - x0 + 1),
-        max(1, y1 - y0 + 1),
-    )
-
-
-# ============================================================
-# TOP PROFILE / FINGERTIP SUPPORT
-# ============================================================
-
-def _top_profile(mask, x0, x1, y0, y1):
-    """
-    Return the topmost glove y-coordinate for every x-column.
-
-    Missing columns are interpolated to avoid tiny segmentation holes causing
-    artificial silhouette peaks.
-    """
-    xs = np.arange(x0, x1 + 1, dtype=np.int32)
-    profile = np.full(len(xs), np.nan, dtype=np.float32)
-
-    for index, x in enumerate(xs):
-        ys = np.flatnonzero(mask[y0:y1 + 1, x] > 0)
-        if ys.size:
-            profile[index] = float(y0 + ys[0])
-
-    valid = np.flatnonzero(np.isfinite(profile))
-    if valid.size < 2:
-        return xs, profile
-
-    missing = np.flatnonzero(~np.isfinite(profile))
-    if missing.size:
-        profile[missing] = np.interp(
-            missing,
-            valid,
-            profile[valid],
-        )
-
-    return xs, profile
-
-
-def _find_fingertips(mask, x0, x1, y0, glove_h, glove_w):
-    """
-    Self-contained fingertip detector.
-
-    Fingertips are local minima of the upper silhouette because y increases
-    downward in image coordinates.
-
-    This is supporting evidence only. The overlap detector does NOT require
-    five visible fingertip peaks because overlapping fingers can merge into one
-    outer silhouette.
-    """
-    search_bottom = min(
-        mask.shape[0] - 1,
-        int(round(y0 + 0.60 * glove_h)),
-    )
-
-    xs, profile = _top_profile(
-        mask,
-        x0,
-        x1,
-        y0,
-        search_bottom,
-    )
-
-    if len(profile) < 7 or np.count_nonzero(np.isfinite(profile)) < 7:
-        return [], profile, profile
-
-    smooth_window = max(
-        5,
-        int(round(PROFILE_SMOOTH_FRAC * glove_w)),
-    )
-    smooth = _smooth_1d(profile, smooth_window)
-
-    upper_limit = y0 + 0.45 * glove_h
-    prominence_radius = max(
-        5,
-        int(round(0.050 * glove_w)),
-    )
-
-    candidates = []
-
-    for i in range(1, len(smooth) - 1):
-        y = smooth[i]
-
-        if y > upper_limit:
-            continue
-
-        is_minimum = (
-            y <= smooth[i - 1]
-            and y < smooth[i + 1]
-        )
-        if not is_minimum:
-            continue
-
-        lo = max(0, i - prominence_radius)
-        hi = min(len(smooth), i + prominence_radius + 1)
-
-        left_reference = float(
-            np.percentile(smooth[lo:i + 1], 75)
-        )
-        right_reference = float(
-            np.percentile(smooth[i:hi], 75)
-        )
-
-        prominence = min(
-            left_reference,
-            right_reference,
-        ) - float(y)
-
-        if prominence < max(2.0, 0.010 * glove_h):
-            continue
-
-        candidates.append({
-            "x": int(xs[i]),
-            "y": int(round(y)),
-            "prominence": float(prominence),
-        })
-
-    if not candidates:
-        return [], profile, smooth
-
-    min_spacing = max(
-        8,
-        int(round(PEAK_MIN_SPACING_FRAC * glove_w)),
-    )
-
-    selected = []
-
-    for candidate in sorted(
-        candidates,
-        key=lambda item: item["prominence"],
-        reverse=True,
-    ):
-        if any(
-            abs(candidate["x"] - chosen["x"]) < min_spacing
-            for chosen in selected
-        ):
-            continue
-
-        selected.append(candidate)
-
-        if len(selected) >= MAX_FINGERTIPS:
-            break
-
-    selected.sort(key=lambda item: item["x"])
-
-    peaks = [
-        (item["x"], item["y"])
-        for item in selected
-    ]
-
-    return peaks, profile, smooth
-
-
-# ============================================================
-# HORIZONTAL RUN / MERGED-FINGER WIDTH
-# ============================================================
-
-def _horizontal_run(mask, x, y):
-    """
-    Return the foreground run containing (x, y).
-
-    Result:
-        (left_x, right_x, width)
-
-    Returns None if point is outside foreground.
-    """
-    h, w = mask.shape[:2]
-
-    x = int(np.clip(x, 0, w - 1))
-    y = int(np.clip(y, 0, h - 1))
-
-    if mask[y, x] == 0:
-        return None
-
-    left = x
-    while left > 0 and mask[y, left - 1] > 0:
-        left -= 1
-
-    right = x
-    while right < w - 1 and mask[y, right + 1] > 0:
-        right += 1
-
-    return left, right, right - left + 1
-
-
-def _estimate_typical_upper_run_width(
-    mask,
-    x0,
-    x1,
-    y0,
-    glove_h,
-    glove_w,
-):
-    """
-    Estimate a typical single-finger horizontal width.
-
-    The function samples connected foreground runs in several upper rows and
-    keeps widths that look finger-sized rather than full-palm-sized.
-    """
-    widths = []
-
-    y_start = int(round(y0 + 0.12 * glove_h))
-    y_end = int(round(y0 + 0.48 * glove_h))
-
-    if y_end <= y_start:
-        return max(1.0, 0.16 * glove_w)
-
-    for y in np.linspace(y_start, y_end, 14).astype(int):
-        row = mask[y, x0:x1 + 1] > 0
-
-        if not np.any(row):
-            continue
-
-        padded = np.pad(row.astype(np.uint8), (1, 1))
-        diff = np.diff(padded.astype(np.int16))
-
-        starts = np.where(diff == 1)[0]
-        ends = np.where(diff == -1)[0] - 1
-
-        for start, end in zip(starts, ends):
-            width = int(end - start + 1)
-
-            if (
-                0.045 * glove_w
-                <= width
-                <= 0.34 * glove_w
-            ):
-                widths.append(width)
-
-    if not widths:
-        return max(1.0, 0.16 * glove_w)
-
-    # Lower percentile is intentional: merged fingers are wider than individual
-    # fingers, while palm-connected runs can be much wider.
-    return float(np.percentile(widths, 40))
-
-
-def _merged_width_support(
-    mask,
-    line,
-    typical_width,
-    glove_w,
-):
-    """
-    Measure whether the candidate seam lies inside an unusually broad finger.
-
-    A true overlap often looks like one broad outer finger with a seam inside.
-    """
-    x1, y1, x2, y2 = line
-
-    sample_count = 9
-    widths = []
-
-    for t in np.linspace(0.10, 0.90, sample_count):
-        x = int(round(x1 + t * (x2 - x1)))
-        y = int(round(y1 + t * (y2 - y1)))
-
-        run = _horizontal_run(mask, x, y)
-        if run is None:
-            continue
-
-        widths.append(float(run[2]))
-
-    if not widths:
-        return {
-            "median_width": 0.0,
-            "width_ratio": 0.0,
-            "width_score": 0.0,
-            "sample_count": 0,
-        }
-
-    median_width = float(np.median(widths))
-    width_ratio = median_width / max(float(typical_width), 1.0)
-
-    # Around 1.35x+ typical finger width starts becoming suspicious.
-    width_score = float(np.clip(
-        (width_ratio - 1.20) / 0.75,
-        0.0,
-        1.0,
-    ))
-
-    # Very huge runs are likely already in the palm. Penalise them.
-    if median_width > 0.48 * glove_w:
-        width_score *= 0.45
-
-    return {
-        "median_width": median_width,
-        "width_ratio": float(width_ratio),
-        "width_score": float(width_score),
-        "sample_count": len(widths),
-    }
-
-
-# ============================================================
-# INTERNAL SEAM EXTRACTION
-# ============================================================
-
-def _build_internal_edge_map(
-    processed,
-    mask,
-    x0,
-    y0,
-    glove_w,
-    glove_h,
-):
-    """
-    Build an edge map containing only INTERNAL glove edges.
-
-    The glove boundary is eroded away so the external silhouette cannot be
-    detected as a touching seam.
-    """
-    gray = None
-
-    if processed is not None:
-        gray = processed.get("gray")
-
-    if gray is None or gray.shape[:2] != mask.shape[:2]:
-        return None, None, None
-
-    boundary_margin = max(
-        3,
-        int(round(BOUNDARY_ERODE_FRAC * glove_w)),
-    )
-
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE,
-        (
-            2 * boundary_margin + 1,
-            2 * boundary_margin + 1,
-        ),
-    )
-
-    interior_mask = cv2.erode(mask, kernel)
-
-    blurred = cv2.GaussianBlur(
-        gray,
-        (5, 5),
-        0,
-    )
-
-    edges = cv2.Canny(
-        blurred,
-        CANNY_LOW,
-        CANNY_HIGH,
-    )
-
-    edges = cv2.bitwise_and(
-        edges,
-        interior_mask,
-    )
-
-    # Keep only upper glove / fingers.
-    search_mask = np.zeros_like(mask)
-
-    sx1 = max(
-        0,
-        int(round(x0 + SEARCH_LEFT_FRAC * glove_w)),
-    )
-    sx2 = min(
-        mask.shape[1],
-        int(round(x0 + SEARCH_RIGHT_FRAC * glove_w)),
-    )
-    sy1 = max(
-        0,
-        int(round(y0 + SEARCH_TOP_FRAC * glove_h)),
-    )
-    sy2 = min(
-        mask.shape[0],
-        int(round(y0 + SEARCH_BOTTOM_FRAC * glove_h)),
-    )
-
-    search_mask[sy1:sy2, sx1:sx2] = 255
-
-    edges = cv2.bitwise_and(
-        edges,
-        search_mask,
-    )
-
-    # Distance transform gives distance from every glove pixel to background.
-    distance = cv2.distanceTransform(
-        (mask > 0).astype(np.uint8),
-        cv2.DIST_L2,
-        5,
-    )
-
-    return edges, interior_mask, distance
-
-
-def _line_verticality(line):
-    x1, y1, x2, y2 = line
-
-    dx = float(x2 - x1)
-    dy = float(y2 - y1)
-
-    length = float(np.hypot(dx, dy))
-
-    if length <= 1e-6:
-        return 0.0, 0.0
-
-    verticality = abs(dy) / length
-    horizontal_slope = abs(dx) / max(abs(dy), 1.0)
-
-    return float(verticality), float(horizontal_slope)
-
-
-def _line_samples(line, count=25):
-    x1, y1, x2, y2 = line
-
-    samples = []
-
-    for t in np.linspace(0.0, 1.0, count):
-        x = int(round(x1 + t * (x2 - x1)))
-        y = int(round(y1 + t * (y2 - y1)))
-        samples.append((x, y))
-
-    return samples
-
-
-def _boundary_distance_score(
-    distance_map,
-    line,
-    glove_w,
-):
-    """
-    Ensure the seam is internal rather than part of the external outline.
-    """
-    if distance_map is None:
-        return 0.0, 0.0
-
-    values = []
-
-    h, w = distance_map.shape[:2]
-
-    for x, y in _line_samples(line, 21):
-        if 0 <= x < w and 0 <= y < h:
-            values.append(float(distance_map[y, x]))
-
-    if not values:
-        return 0.0, 0.0
-
-    median_distance = float(np.median(values))
-
-    minimum_required = max(
-        2.0,
-        MIN_BOUNDARY_DISTANCE_FRAC * glove_w,
-    )
-
-    score = float(np.clip(
-        median_distance / max(2.5 * minimum_required, 1.0),
-        0.0,
-        1.0,
-    ))
-
-    return median_distance, score
-
-
-def _side_material_support(
-    mask,
-    line,
-    glove_w,
-):
-    """
-    Check whether glove material exists on both sides of the seam.
-
-    This is a very important discriminator:
-    - outer silhouette: material exists on only one side
-    - internal overlap seam: material exists on both sides
-    """
-    x1, y1, x2, y2 = line
-
-    dx = float(x2 - x1)
-    dy = float(y2 - y1)
-
-    length = float(np.hypot(dx, dy))
-    if length <= 1.0:
-        return 0.0
-
-    # Unit normal perpendicular to line.
-    nx = -dy / length
-    ny = dx / length
-
-    min_probe = max(
-        3,
-        int(round(SIDE_PROBE_MIN_FRAC * glove_w)),
-    )
-    max_probe = max(
-        min_probe,
-        int(round(SIDE_PROBE_MAX_FRAC * glove_w)),
-    )
-
-    probe_distances = np.linspace(
-        min_probe,
-        max_probe,
-        3,
-    )
-
-    h, w = mask.shape[:2]
-
-    supported = 0
-    total = 0
-
-    # Skip line ends because they can approach a fingertip boundary.
-    for t in np.linspace(0.16, 0.84, 13):
-        cx = x1 + t * dx
-        cy = y1 + t * dy
-
-        left_votes = 0
-        right_votes = 0
-
-        for probe in probe_distances:
-            lx = int(round(cx + nx * probe))
-            ly = int(round(cy + ny * probe))
-
-            rx = int(round(cx - nx * probe))
-            ry = int(round(cy - ny * probe))
-
-            if (
-                0 <= lx < w
-                and 0 <= ly < h
-                and mask[ly, lx] > 0
-            ):
-                left_votes += 1
-
-            if (
-                0 <= rx < w
-                and 0 <= ry < h
-                and mask[ry, rx] > 0
-            ):
-                right_votes += 1
-
-        total += 1
-
-        if (
-            left_votes >= 2
-            and right_votes >= 2
-        ):
-            supported += 1
-
-    if total == 0:
-        return 0.0
-
-    return float(supported / total)
-
-
-def _edge_continuity_score(
-    edges,
-    line,
-    glove_w,
-):
-    """
-    Measure how continuously edge pixels follow the Hough seam.
-    """
-    if edges is None:
-        return 0.0
-
-    radius = max(
-        2,
-        int(round(0.006 * glove_w)),
-    )
-
-    h, w = edges.shape[:2]
-
-    hits = 0
-    total = 0
-
-    for x, y in _line_samples(line, 31):
-        x1 = max(0, x - radius)
-        x2 = min(w, x + radius + 1)
-
-        y1 = max(0, y - radius)
-        y2 = min(h, y + radius + 1)
-
-        total += 1
-
-        if np.any(edges[y1:y2, x1:x2] > 0):
-            hits += 1
-
-    if total == 0:
-        return 0.0
-
-    return float(hits / total)
-
-
-def _top_position_score(
-    line,
-    y0,
-    glove_h,
-):
-    """
-    True overlap seams should begin high in the finger region.
-    """
-    _, y1, _, y2 = line
-    line_top = min(y1, y2)
-
-    relative_top = (
-        line_top - y0
-    ) / max(float(glove_h), 1.0)
-
-    return float(np.clip(
-        (0.48 - relative_top) / 0.38,
-        0.0,
-        1.0,
-    ))
-
-
-def _line_length_score(
-    line,
-    glove_h,
-):
-    x1, y1, x2, y2 = line
-
-    length = float(
-        np.hypot(
-            x2 - x1,
-            y2 - y1,
-        )
-    )
-
-    score = float(np.clip(
-        (
-            length
-            - MIN_SEAM_LENGTH_FRAC * glove_h
-        )
-        / max(
-            (
-                STRONG_SEAM_LENGTH_FRAC
-                - MIN_SEAM_LENGTH_FRAC
-            ) * glove_h,
-            1.0,
-        ),
-        0.0,
-        1.0,
-    ))
-
-    return length, score
-
-
-def _detect_overlap_seams(
-    processed,
-    mask,
-    x0,
-    y0,
-    glove_w,
-    glove_h,
-):
-    """
-    Find and rank long internal seam lines caused by overlapping fingers.
-    """
-    edges, interior_mask, distance = _build_internal_edge_map(
-        processed,
-        mask,
-        x0,
-        y0,
-        glove_w,
-        glove_h,
-    )
-
-    if edges is None:
-        return [], None
-
-    min_line_length = max(
-        18,
-        int(round(MIN_SEAM_LENGTH_FRAC * glove_h)),
-    )
-
-    lines = cv2.HoughLinesP(
-        edges,
-        1,
-        np.pi / 180.0,
-        threshold=max(
-            12,
-            int(round(0.022 * glove_h)),
-        ),
-        minLineLength=min_line_length,
-        maxLineGap=max(
-            7,
-            int(round(0.025 * glove_h)),
-        ),
-    )
-
-    if lines is None:
-        return [], edges
-
-    typical_width = _estimate_typical_upper_run_width(
-        mask,
-        x0,
-        x0 + glove_w - 1,
-        y0,
-        glove_h,
-        glove_w,
-    )
-
-    candidates = []
-
-    for raw in lines[:, 0]:
-        line = tuple(int(v) for v in raw)
-
-        verticality, horizontal_slope = _line_verticality(
-            line
-        )
-
-        if verticality < MIN_VERTICALITY:
-            continue
-
-        if horizontal_slope > MAX_HORIZONTAL_SLOPE:
-            continue
-
-        length, length_score = _line_length_score(
-            line,
-            glove_h,
-        )
-
-        if length < MIN_SEAM_LENGTH_FRAC * glove_h:
-            continue
-
-        boundary_distance, boundary_score = _boundary_distance_score(
-            distance,
-            line,
-            glove_w,
-        )
-
-        if (
-            boundary_distance
-            < max(
-                2.0,
-                MIN_BOUNDARY_DISTANCE_FRAC * glove_w,
-            )
-        ):
-            continue
-
-        side_support = _side_material_support(
-            mask,
-            line,
-            glove_w,
-        )
-
-        if side_support < MIN_SIDE_SUPPORT:
-            continue
-
-        continuity = _edge_continuity_score(
-            edges,
-            line,
-            glove_w,
-        )
-
-        top_score = _top_position_score(
-            line,
-            y0,
-            glove_h,
-        )
-
-        width_info = _merged_width_support(
-            mask,
-            line,
-            typical_width,
-            glove_w,
-        )
-
-        # A real overlap seam should be:
-        # - long
-        # - vertical/diagonal
-        # - continuous
-        # - internal
-        # - surrounded by material on both sides
-        # - preferably inside a broad/merged finger region
-        geometry_score = float(np.clip(
-            0.22 * length_score
-            + 0.16 * verticality
-            + 0.18 * continuity
-            + 0.14 * boundary_score
-            + 0.16 * side_support
-            + 0.08 * top_score
-            + 0.06 * width_info["width_score"],
-            0.0,
-            1.0,
-        ))
-
-        # Strong bonus for a genuinely broad merged finger.
-        if (
-            width_info["width_ratio"] >= 1.45
-            and side_support >= 0.75
-            and continuity >= 0.55
-        ):
-            geometry_score = min(
-                1.0,
-                geometry_score + 0.10,
-            )
-
-        point = (
-            int(round(0.5 * (line[0] + line[2]))),
-            int(round(0.5 * (line[1] + line[3]))),
-        )
-
-        candidates.append({
-            "source": "overlap_internal_seam",
-            "line": line,
-            "point": point,
-            "length": float(length),
-            "length_ratio": float(
-                length / max(float(glove_h), 1.0)
-            ),
-            "verticality": float(verticality),
-            "edge_continuity": float(continuity),
-            "boundary_distance": float(boundary_distance),
-            "boundary_score": float(boundary_score),
-            "side_support": float(side_support),
-            "top_position_score": float(top_score),
-            "typical_finger_width": float(typical_width),
-            "local_merged_width": float(
-                width_info["median_width"]
-            ),
-            "merged_width_ratio": float(
-                width_info["width_ratio"]
-            ),
-            "merged_width_score": float(
-                width_info["width_score"]
-            ),
-            "geometry_score": geometry_score,
-        })
-
-    candidates.sort(
-        key=lambda item: item["geometry_score"],
-        reverse=True,
-    )
-
-    return candidates[:12], edges
-
-
-# ============================================================
-# LOCAL DARK-SEAM / GRADIENT CONFIRMATION
-# ============================================================
-
-def _local_seam_strength(
-    processed,
-    mask,
-    line,
-    glove_w,
-):
-    """
-    Compare gradient strength around the seam with the glove interior.
-
-    This is supporting evidence only because wrinkles can also have gradients.
-    """
-    gray = None
-
-    if processed is not None:
-        gray = processed.get("gray")
-
-    if gray is None or gray.shape[:2] != mask.shape[:2]:
-        return 0.0
-
-    margin = max(
-        2,
-        int(round(0.010 * glove_w)),
-    )
-
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE,
-        (
-            2 * margin + 1,
-            2 * margin + 1,
-        ),
-    )
-
-    interior = cv2.erode(
-        mask,
-        kernel,
-    ) > 0
-
-    blurred = cv2.GaussianBlur(
-        gray,
-        (5, 5),
-        0,
-    )
-
-    gx = cv2.Sobel(
-        blurred,
-        cv2.CV_32F,
-        1,
-        0,
-        ksize=3,
-    )
-
-    gy = cv2.Sobel(
-        blurred,
-        cv2.CV_32F,
-        0,
-        1,
-        ksize=3,
-    )
-
-    gradient = cv2.magnitude(
-        gx,
-        gy,
-    )
-
-    glove_values = gradient[interior]
-
-    if glove_values.size == 0:
-        return 0.0
-
-    reference = max(
-        float(
-            np.percentile(
-                glove_values,
-                90,
-            )
-        ),
-        1.0,
-    )
-
-    radius = max(
-        2,
-        int(round(0.008 * glove_w)),
-    )
-
-    seam_values = []
-
-    h, w = gray.shape[:2]
-
-    for x, y in _line_samples(line, 35):
-        x1 = max(0, x - radius)
-        x2 = min(w, x + radius + 1)
-
-        y1 = max(0, y - radius)
-        y2 = min(h, y + radius + 1)
-
-        patch_mask = interior[y1:y2, x1:x2]
-
-        if not np.any(patch_mask):
-            continue
-
-        patch_gradient = gradient[y1:y2, x1:x2]
-        seam_values.extend(
-            patch_gradient[patch_mask].tolist()
-        )
-
-    if not seam_values:
-        return 0.0
-
-    local_strength = float(
-        np.percentile(
-            seam_values,
-            78,
-        )
-    )
-
-    return float(np.clip(
-        local_strength / reference,
-        0.0,
-        1.0,
-    ))
-
-
-def _dark_seam_score(
-    processed,
-    mask,
-    line,
-    glove_w,
-):
-    """
-    Reward a darker line relative to surrounding glove material.
-
-    This especially helps white/cream cotton and latex examples like the
-    provided overlapping-finger image. It is kept low-weight so coloured
-    nitrile gloves do not depend on it.
-    """
-    gray = None
-
-    if processed is not None:
-        gray = processed.get("gray")
-
-    if gray is None or gray.shape[:2] != mask.shape[:2]:
-        return 0.0
-
-    x1, y1, x2, y2 = line
-
-    dx = float(x2 - x1)
-    dy = float(y2 - y1)
-
-    length = float(np.hypot(dx, dy))
-
-    if length <= 1.0:
-        return 0.0
-
-    nx = -dy / length
-    ny = dx / length
-
-    seam_radius = max(
-        1,
-        int(round(0.004 * glove_w)),
-    )
-
-    side_offset = max(
-        4,
-        int(round(0.025 * glove_w)),
-    )
-
-    h, w = gray.shape[:2]
-
-    seam_vals = []
-    side_vals = []
-
-    for t in np.linspace(0.15, 0.85, 21):
-        cx = x1 + t * dx
-        cy = y1 + t * dy
-
-        for r in range(-seam_radius, seam_radius + 1):
-            sx = int(round(cx + nx * r))
-            sy = int(round(cy + ny * r))
-
-            if (
-                0 <= sx < w
-                and 0 <= sy < h
-                and mask[sy, sx] > 0
-            ):
-                seam_vals.append(
-                    float(gray[sy, sx])
-                )
-
-        for sign in (-1.0, 1.0):
-            sx = int(
-                round(
-                    cx
-                    + sign
-                    * nx
-                    * side_offset
-                )
-            )
-            sy = int(
-                round(
-                    cy
-                    + sign
-                    * ny
-                    * side_offset
-                )
-            )
-
-            if (
-                0 <= sx < w
-                and 0 <= sy < h
-                and mask[sy, sx] > 0
-            ):
-                side_vals.append(
-                    float(gray[sy, sx])
-                )
-
-    if (
-        len(seam_vals) < 8
-        or len(side_vals) < 8
-    ):
-        return 0.0
-
-    seam_mean = float(
-        np.mean(seam_vals)
-    )
-    side_mean = float(
-        np.mean(side_vals)
-    )
-
-    darkness = side_mean - seam_mean
-
-    return float(np.clip(
-        darkness / 32.0,
-        0.0,
-        1.0,
-    ))
-
-
-# ============================================================
-# CONVEXITY / SILHOUETTE SUPPORT
-# ============================================================
-
-def _upper_convexity_features(
-    mask,
-    x0,
-    y0,
-    glove_w,
-    glove_h,
-):
-    """
-    Compute weak silhouette support.
-
-    Overlapping fingers often remove one normal interdigital concavity, causing
-    slightly fewer deep upper convexity defects and slightly higher solidity.
-    These features are deliberately low-weight because segmentation errors can
-    also change them.
-    """
-    hand_bottom = min(
-        mask.shape[0],
-        int(round(y0 + 0.72 * glove_h)),
-    )
-
-    roi = np.zeros_like(mask)
-    roi[
-        y0:hand_bottom,
-        x0:x0 + glove_w
-    ] = mask[
-        y0:hand_bottom,
-        x0:x0 + glove_w
-    ]
-
-    contour = _largest_contour(roi)
-
-    if contour is None or len(contour) < 4:
-        return {
-            "deep_valleys": 0,
-            "moderate_valleys": 0,
-            "solidity": 0.0,
-            "silhouette_signal": 0.0,
-        }
-
-    hull_points = cv2.convexHull(
-        contour
-    )
-
-    contour_area = float(
-        cv2.contourArea(
-            contour
-        )
-    )
-
-    hull_area = max(
-        float(
-            cv2.contourArea(
-                hull_points
-            )
-        ),
-        1.0,
-    )
-
-    solidity = (
-        contour_area
-        / hull_area
-    )
-
-    hull_index = cv2.convexHull(
-        contour,
-        returnPoints=False,
-    )
-
-    moderate = 0
-    deep = 0
-
-    if (
-        hull_index is not None
-        and len(hull_index) >= 4
-    ):
-        defects = cv2.convexityDefects(
-            contour,
-            hull_index,
-        )
-
-        if defects is not None:
-            for d in defects[:, 0]:
-                _, _, far_index, depth_raw = map(
-                    int,
-                    d,
-                )
-
-                far = contour[
-                    far_index
-                ][0]
-
-                fx = float(far[0])
-                fy = float(far[1])
-
-                if not (
-                    x0 + 0.06 * glove_w
-                    <= fx
-                    <= x0 + 0.94 * glove_w
-                ):
-                    continue
-
-                if not (
-                    y0 + 0.08 * glove_h
-                    <= fy
-                    <= y0 + 0.62 * glove_h
-                ):
-                    continue
-
-                depth = (
-                    float(depth_raw)
-                    / 256.0
-                )
-
-                if depth >= 0.035 * glove_w:
-                    moderate += 1
-
-                if depth >= 0.065 * glove_w:
-                    deep += 1
-
-    # Three main upper-finger valleys are more stable than requiring the
-    # anatomically different thumb/index valley.
-    missing_valley_signal = float(np.clip(
-        (3.0 - deep) / 3.0,
-        0.0,
-        1.0,
-    ))
-
-    solidity_signal = float(np.clip(
-        (solidity - 0.74) / 0.18,
-        0.0,
-        1.0,
-    ))
-
-    silhouette_signal = float(
-        0.68 * missing_valley_signal
-        + 0.32 * solidity_signal
-    )
-
-    return {
-        "deep_valleys": int(deep),
-        "moderate_valleys": int(moderate),
-        "solidity": float(solidity),
-        "silhouette_signal": float(
-            silhouette_signal
-        ),
-    }
-
-
-# ============================================================
-# CANDIDATE MERGING / DE-DUPLICATION
-# ============================================================
-
-def _line_angle_deg(line):
-    x1, y1, x2, y2 = line
-    return float(
-        np.degrees(
-            np.arctan2(
-                y2 - y1,
-                x2 - x1,
-            )
-        )
-    )
-
-
-def _candidate_similarity(a, b, glove_w, glove_h):
-    """
-    Decide whether two Hough lines likely represent the same physical seam.
-    """
-    ax, ay = a["point"]
-    bx, by = b["point"]
-
-    point_distance = float(
-        np.hypot(
-            ax - bx,
-            ay - by,
-        )
-    )
-
-    if point_distance > 0.10 * max(
-        glove_w,
-        glove_h,
-    ):
-        return False
-
-    angle_a = _line_angle_deg(
-        a["line"]
-    )
-    angle_b = _line_angle_deg(
-        b["line"]
-    )
-
-    angle_difference = abs(
-        angle_a - angle_b
-    )
-
-    angle_difference = min(
-        angle_difference,
-        180.0 - angle_difference,
-    )
-
-    return angle_difference <= 18.0
-
-
-def _deduplicate_candidates(
-    candidates,
-    glove_w,
-    glove_h,
-):
-    """
-    Keep one strongest representation of each physical internal seam.
-    """
+def _angle_deg(a, vertex, b):
+    va = a.astype(np.float64) - vertex.astype(np.float64)
+    vb = b.astype(np.float64) - vertex.astype(np.float64)
+    denominator = float(np.linalg.norm(va) * np.linalg.norm(vb))
+    if denominator <= 1e-9:
+        return 180.0
+    cosine = float(np.clip(np.dot(va, vb) / denominator, -1.0, 1.0))
+    return float(np.degrees(np.arccos(cosine)))
+
+
+def _deduplicate_x(items, spacing):
     kept = []
-
-    for candidate in candidates:
-        duplicate = False
-
-        for existing in kept:
-            if _candidate_similarity(
-                candidate,
-                existing,
-                glove_w,
-                glove_h,
-            ):
-                duplicate = True
-                break
-
-        if not duplicate:
-            kept.append(candidate)
-
-    return kept
-
-
-# ============================================================
-# DEFECT LOCALISATION
-# ============================================================
-
-def _line_region(
-    mask,
-    line,
-    glove_w,
-):
-    """
-    Produce a narrow defect mask around the overlap seam.
-    """
-    x1, y1, x2, y2 = line
-
-    radius = max(
-        7,
-        int(round(0.032 * glove_w)),
-    )
-
-    region = np.zeros_like(mask)
-
-    cv2.line(
-        region,
-        (int(x1), int(y1)),
-        (int(x2), int(y2)),
-        255,
-        thickness=2 * radius + 1,
-        lineType=cv2.LINE_AA,
-    )
-
-    region = cv2.bitwise_and(
-        region,
-        mask,
-    )
-
-    ys, xs = np.where(
-        region > 0
-    )
-
-    if xs.size == 0:
-        return (
-            region,
-            None,
-            radius,
-        )
-
-    bx1 = int(xs.min())
-    bx2 = int(xs.max())
-    by1 = int(ys.min())
-    by2 = int(ys.max())
-
-    bbox = (
-        bx1,
-        by1,
-        bx2 - bx1 + 1,
-        by2 - by1 + 1,
-    )
-
-    return (
-        region,
-        bbox,
-        radius,
-    )
-
-
-# ============================================================
-# MAIN DETECTOR
-# ============================================================
-
-def detect_touching(
-    processed: dict,
-    segmentation: dict,
-) -> dict:
-    """
-    Detect Touching where one glove finger overlaps another.
-
-    The detector intentionally does not require two separate fingertip peaks.
-    The strongest condition is a long INTERNAL seam surrounded by glove
-    material on both sides in the upper finger region.
-    """
-    result = _empty_result()
-
-    if segmentation is None:
-        return result
-
-    mask = segmentation.get(
-        "glove_mask"
-    )
-
-    if (
-        mask is None
-        or np.count_nonzero(mask) < 500
-    ):
-        return result
-
-    mask = _binary_mask(
-        mask
-    )
-
-    bounds = _glove_bounds(
-        mask
-    )
-
-    if bounds is None:
-        return result
-
-    (
-        x0,
-        y0,
-        x1,
-        y1,
-        glove_w,
-        glove_h,
-    ) = bounds
-
-    # --------------------------------------------------------
-    # 1. Self-contained fingertip support
-    # --------------------------------------------------------
-    fingertip_peaks, _, _ = _find_fingertips(
-        mask,
-        x0,
-        x1,
-        y0,
-        glove_h,
-        glove_w,
-    )
-
-    # Missing one visible outer fingertip can support overlap, but never
-    # decides the result by itself.
-    peak_count = len(
-        fingertip_peaks
-    )
-
-    merged_peak_signal = float(np.clip(
-        (5.0 - peak_count) / 2.0,
-        0.0,
-        1.0,
-    ))
-
-    # --------------------------------------------------------
-    # 2. Silhouette support
-    # --------------------------------------------------------
-    silhouette = _upper_convexity_features(
-        mask,
-        x0,
-        y0,
-        glove_w,
-        glove_h,
-    )
-
-    # --------------------------------------------------------
-    # 3. Find internal overlap seams
-    # --------------------------------------------------------
-    seam_candidates, edge_map = _detect_overlap_seams(
-        processed,
-        mask,
-        x0,
-        y0,
-        glove_w,
-        glove_h,
-    )
-
-    seam_candidates = _deduplicate_candidates(
-        seam_candidates,
-        glove_w,
-        glove_h,
-    )
-
-    # --------------------------------------------------------
-    # 4. Add intensity/gradient confirmation
-    # --------------------------------------------------------
-    ranked = []
-
-    for candidate in seam_candidates:
-        item = dict(
-            candidate
-        )
-
-        gradient_score = _local_seam_strength(
-            processed,
-            mask,
-            item["line"],
-            glove_w,
-        )
-
-        dark_score = _dark_seam_score(
-            processed,
-            mask,
-            item["line"],
-            glove_w,
-        )
-
-        item["gradient_score"] = float(
-            gradient_score
-        )
-        item["dark_seam_score"] = float(
-            dark_score
-        )
-
-        # Geometry dominates. Gradient and darkness only confirm the seam.
-        final_candidate_score = float(np.clip(
-            0.78 * item["geometry_score"]
-            + 0.14 * gradient_score
-            + 0.08 * dark_score,
-            0.0,
-            1.0,
-        ))
-
-        # Very strong internal continuity + both-side material is especially
-        # characteristic of the overlap shown in the user's example.
-        if (
-            item["side_support"] >= 0.82
-            and item["edge_continuity"] >= 0.66
-            and item["length_ratio"] >= 0.16
-        ):
-            final_candidate_score = min(
-                1.0,
-                final_candidate_score + 0.08,
-            )
-
-        item["score"] = float(
-            final_candidate_score
-        )
-
-        if (
-            item["score"]
-            >= MIN_CANDIDATE_SCORE
-        ):
-            ranked.append(
-                item
-            )
-
-    ranked.sort(
-        key=lambda item: item["score"],
-        reverse=True,
-    )
-
-    best = (
-        ranked[0]
-        if ranked
-        else None
-    )
-
-    # --------------------------------------------------------
-    # 5. Final score
-    # --------------------------------------------------------
-    if best is None:
-        final_score = min(
-            0.49,
-            0.20 * silhouette["silhouette_signal"]
-            + 0.10 * merged_peak_signal,
-        )
-        detected = False
-
-    else:
-        seam_signal = float(
-            best["score"]
-        )
-
-        # Shape information is only supporting evidence because an overlap can
-        # still preserve an apparently normal outer silhouette.
-        support_signal = float(np.clip(
-            0.58 * silhouette["silhouette_signal"]
-            + 0.42 * merged_peak_signal,
-            0.0,
-            1.0,
-        ))
-
-        final_score = float(np.clip(
-            0.86 * seam_signal
-            + 0.14 * support_signal,
-            0.0,
-            1.0,
-        ))
-
-        # Strong overlap geometry should cross the decision boundary even when
-        # the external silhouette still looks almost normal.
-        if (
-            best["side_support"] >= 0.78
-            and best["edge_continuity"] >= 0.58
-            and best["length_ratio"] >= 0.15
-            and best["boundary_score"] >= 0.35
-        ):
-            final_score = max(
-                final_score,
-                0.55,
-            )
-
-        # Require an actual internal-overlap seam candidate.
-        detected = bool(
-            final_score >= DETECTION_THRESHOLD
-            and best["source"] == "overlap_internal_seam"
-            and best["side_support"] >= MIN_SIDE_SUPPORT
-        )
-
-    # --------------------------------------------------------
-    # 6. Localise the actual overlap seam
-    # --------------------------------------------------------
-    defect_mask = np.zeros_like(
-        mask
-    )
-    bbox = None
-    seam_radius = None
-
-    if detected and best is not None:
-        (
-            defect_mask,
-            bbox,
-            seam_radius,
-        ) = _line_region(
-            mask,
-            best["line"],
-            glove_w,
-        )
-
-    area_pct = (
-        100.0
-        * np.count_nonzero(
-            defect_mask
-        )
-        / max(
-            np.count_nonzero(mask),
-            1,
-        )
-    )
-
-    # --------------------------------------------------------
-    # 7. Diagnostics
-    # --------------------------------------------------------
-    measurements = {
-        "area_pct": round(
-            float(area_pct),
-            3,
-        ),
-
-        "fingertip_peaks": int(
-            peak_count
-        ),
-
-        "fingertip_peak_points": [
-            (
-                int(x),
-                int(y),
-            )
-            for x, y in fingertip_peaks
-        ],
-
-        "merged_peak_signal": round(
-            float(merged_peak_signal),
-            4,
-        ),
-
-        "deep_finger_valleys": int(
-            silhouette[
-                "deep_valleys"
-            ]
-        ),
-
-        "moderate_finger_valleys": int(
-            silhouette[
-                "moderate_valleys"
-            ]
-        ),
-
-        "upper_hand_solidity": round(
-            float(
-                silhouette[
-                    "solidity"
-                ]
-            ),
-            4,
-        ),
-
-        "silhouette_signal": round(
-            float(
-                silhouette[
-                    "silhouette_signal"
-                ]
-            ),
-            4,
-        ),
-
-        "raw_seam_candidates": int(
-            len(seam_candidates)
-        ),
-
-        "accepted_seam_candidates": int(
-            len(ranked)
-        ),
-
-        "overlap_seam_found": bool(
-            best is not None
-        ),
-
-        "contact_candidate_source": (
-            best["source"]
-            if best is not None
-            else None
-        ),
-
-        "contact_point": (
-            best["point"]
-            if best is not None
-            else None
-        ),
-
-        "contact_line": (
-            best["line"]
-            if best is not None
-            else None
-        ),
-
-        "contact_radius_px": (
-            int(seam_radius)
-            if seam_radius is not None
-            else None
-        ),
-
-        "contact_candidate_score": (
-            round(
-                float(
-                    best["score"]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_geometry_score": (
-            round(
-                float(
-                    best[
-                        "geometry_score"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_length_px": (
-            round(
-                float(
-                    best["length"]
-                ),
-                2,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_length_ratio": (
-            round(
-                float(
-                    best["length_ratio"]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_verticality": (
-            round(
-                float(
-                    best["verticality"]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_edge_continuity": (
-            round(
-                float(
-                    best[
-                        "edge_continuity"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_side_support": (
-            round(
-                float(
-                    best[
-                        "side_support"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_boundary_distance_px": (
-            round(
-                float(
-                    best[
-                        "boundary_distance"
-                    ]
-                ),
-                2,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_boundary_score": (
-            round(
-                float(
-                    best[
-                        "boundary_score"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "seam_top_position_score": (
-            round(
-                float(
-                    best[
-                        "top_position_score"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "typical_finger_width_px": (
-            round(
-                float(
-                    best[
-                        "typical_finger_width"
-                    ]
-                ),
-                2,
-            )
-            if best is not None
-            else None
-        ),
-
-        "local_merged_width_px": (
-            round(
-                float(
-                    best[
-                        "local_merged_width"
-                    ]
-                ),
-                2,
-            )
-            if best is not None
-            else None
-        ),
-
-        "merged_width_ratio": (
-            round(
-                float(
-                    best[
-                        "merged_width_ratio"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "merged_width_score": (
-            round(
-                float(
-                    best[
-                        "merged_width_score"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "contact_gradient_score": (
-            round(
-                float(
-                    best[
-                        "gradient_score"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
-
-        "contact_dark_seam_score": (
-            round(
-                float(
-                    best[
-                        "dark_seam_score"
-                    ]
-                ),
-                4,
-            )
-            if best is not None
-            else None
-        ),
+    for item in sorted(items, key=lambda value: value["depth"], reverse=True):
+        if all(abs(item["x"] - old["x"]) >= spacing for old in kept):
+            kept.append(item)
+    return sorted(kept, key=lambda value: value["x"])
+
+
+def _topology(contour, bounds):
+    gx, gy, gw, gh = bounds
+    hull = cv2.convexHull(contour, returnPoints=False)
+    if hull is None or len(hull) < 4:
+        return {"gap_count": 0, "missing": EXPECTED_GAPS, "valleys": []}
+    defects = cv2.convexityDefects(contour, hull)
+    if defects is None:
+        return {"gap_count": 0, "missing": EXPECTED_GAPS, "valleys": []}
+
+    bottom = gy + FINGER_REGION_BOTTOM * gh
+    margin = SIDE_MARGIN_RATIO * gw
+    minimum_depth = MIN_GAP_DEPTH_RATIO * gh
+    candidates = []
+    for start_i, end_i, far_i, raw_depth in defects[:, 0, :]:
+        start = contour[int(start_i), 0]
+        end = contour[int(end_i), 0]
+        far = contour[int(far_i), 0]
+        x, y = int(far[0]), int(far[1])
+        depth = float(raw_depth) / 256.0
+        if not (gy < y < bottom and gx + margin < x < gx + gw - margin):
+            continue
+        if depth < minimum_depth or _angle_deg(start, far, end) > MAX_GAP_ANGLE_DEG:
+            continue
+        candidates.append({"x": x, "y": y, "depth": depth})
+
+    spacing = max(4, int(round(MIN_GAP_SPACING_RATIO * gw)))
+    valleys = _deduplicate_x(candidates, spacing)
+    count = len(valleys)
+    return {
+        "gap_count": int(count),
+        "missing": int(max(0, EXPECTED_GAPS - count)),
+        "valleys": valleys,
     }
 
-    result.update({
-        "detected": bool(
-            detected
+
+def _adaptive_edges(gray, mask, bounds):
+    """Use masked gradient percentiles so cotton texture raises its own threshold."""
+    gx, gy, gw, gh = bounds
+    enhanced = cv2.GaussianBlur(gray, (5, 5), 0)
+    sx = cv2.Sobel(enhanced, cv2.CV_32F, 1, 0, ksize=3)
+    sy = cv2.Sobel(enhanced, cv2.CV_32F, 0, 1, ksize=3)
+    magnitude = cv2.magnitude(sx, sy)
+
+    upper = np.zeros_like(mask)
+    y2 = min(mask.shape[0], gy + int(round(FINGER_REGION_BOTTOM * gh)))
+    upper[gy:y2, gx:gx + gw] = mask[gy:y2, gx:gx + gw]
+    values = magnitude[upper > 0]
+    if values.size < 50:
+        return np.zeros_like(mask), upper, 0.0, 0, 0
+
+    low = int(np.clip(np.percentile(values, 62), 8, 120))
+    high = int(np.clip(np.percentile(values, 88), low + 10, 240))
+    edges = cv2.Canny(enhanced, low, high)
+
+    erosion = max(3, int(round(BOUNDARY_ERODE_RATIO * gw)))
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * erosion + 1,) * 2)
+    interior = cv2.erode(mask, kernel)
+    search = cv2.bitwise_and(interior, upper)
+    edges = cv2.bitwise_and(edges, search)
+    density = float(np.count_nonzero(edges) / max(np.count_nonzero(search), 1))
+    return edges, search, density, low, high
+
+
+def _samples(line, count=27):
+    x1, y1, x2, y2 = line
+    return [
+        (int(round(x1 + t * (x2 - x1))), int(round(y1 + t * (y2 - y1))))
+        for t in np.linspace(0.0, 1.0, count)
+    ]
+
+
+def _line_continuity(edges, line, radius):
+    h, w = edges.shape
+    hits = 0
+    points = _samples(line, 31)
+    for x, y in points:
+        x0, x1 = max(0, x - radius), min(w, x + radius + 1)
+        y0, y1 = max(0, y - radius), min(h, y + radius + 1)
+        hits += int(np.any(edges[y0:y1, x0:x1] > 0))
+    return float(hits / max(len(points), 1))
+
+
+def _seam_prominence(edges, line, glove_w):
+    """Compare a seam with nearby parallel edges to suppress knitted ribs.
+
+    Cotton texture produces several similarly strong parallel lines. A physical
+    overlap boundary should be more continuous than lines shifted to either
+    side of it.
+    """
+    x1, y1, x2, y2 = line
+    dx, dy = float(x2 - x1), float(y2 - y1)
+    length = float(np.hypot(dx, dy))
+    if length <= 1.0:
+        return 0.0
+    nx, ny = -dy / length, dx / length
+    radius = max(1, int(round(0.004 * glove_w)))
+    centre = _line_continuity(edges, line, radius)
+    nearby = []
+    for ratio in (-0.040, -0.025, -0.014, 0.014, 0.025, 0.040):
+        offset = ratio * glove_w
+        shifted = (
+            int(round(x1 + nx * offset)), int(round(y1 + ny * offset)),
+            int(round(x2 + nx * offset)), int(round(y2 + ny * offset)),
+        )
+        nearby.append(_line_continuity(edges, shifted, radius))
+    reference = float(np.percentile(nearby, 65)) if nearby else 0.0
+    return float(np.clip((centre - reference) / max(1.0 - reference, 0.15), 0.0, 1.0))
+
+
+def _side_support(mask, line, glove_w):
+    x1, y1, x2, y2 = line
+    dx, dy = float(x2 - x1), float(y2 - y1)
+    length = float(np.hypot(dx, dy))
+    if length <= 1.0:
+        return 0.0
+    nx, ny = -dy / length, dx / length
+    # Inspect every pixel close to the line. Sparse far-away probes can jump
+    # across a narrow background gap and land in the neighbouring finger,
+    # causing an external finger edge to look like an internal overlap seam.
+    near_limit = max(3, int(round(0.018 * glove_w)))
+    far_limit = max(near_limit + 2, int(round(0.045 * glove_w)))
+    near_probes = range(2, near_limit + 1)
+    far_probes = np.linspace(near_limit + 1, far_limit, 3).astype(int)
+    h, w = mask.shape
+    supported, total = 0, 0
+    for t in np.linspace(0.16, 0.84, 13):
+        cx, cy = x1 + t * dx, y1 + t * dy
+        near_ratios = []
+        far_votes = []
+        for sign in (1.0, -1.0):
+            near_values = []
+            for probe in near_probes:
+                x = int(round(cx + sign * nx * probe))
+                y = int(round(cy + sign * ny * probe))
+                near_values.append(int(
+                    0 <= x < w and 0 <= y < h and mask[y, x] > 0
+                ))
+            near_ratios.append(float(np.mean(near_values)) if near_values else 0.0)
+
+            votes = 0
+            for probe in far_probes:
+                x = int(round(cx + sign * nx * int(probe)))
+                y = int(round(cy + sign * ny * int(probe)))
+                votes += int(0 <= x < w and 0 <= y < h and mask[y, x] > 0)
+            far_votes.append(votes)
+        total += 1
+        # Both immediate sides must be almost uninterrupted glove. The looser
+        # far test allows a true overlap seam that approaches a fingertip edge.
+        supported += int(
+            near_ratios[0] >= 0.88 and near_ratios[1] >= 0.88
+            and far_votes[0] >= 1 and far_votes[1] >= 1
+        )
+    return float(supported / max(total, 1))
+
+
+def _horizontal_runs(row):
+    padded = np.pad((row > 0).astype(np.uint8), (1, 1))
+    change = np.diff(padded.astype(np.int16))
+    starts = np.flatnonzero(change == 1)
+    ends = np.flatnonzero(change == -1) - 1
+    return [(int(a), int(b), int(b - a + 1)) for a, b in zip(starts, ends)]
+
+
+def _typical_finger_width(mask, bounds):
+    gx, gy, gw, gh = bounds
+    widths = []
+    for y in np.linspace(gy + 0.12 * gh, gy + 0.48 * gh, 14).astype(int):
+        for _, _, width in _horizontal_runs(mask[y, gx:gx + gw]):
+            if 0.045 * gw <= width <= 0.34 * gw:
+                widths.append(width)
+    return float(np.percentile(widths, 40)) if widths else float(0.16 * gw)
+
+
+def _merged_width(mask, line, typical_width, glove_w):
+    widths = []
+    h, w = mask.shape
+    for x, y in _samples(line, 11)[1:-1]:
+        if not (0 <= x < w and 0 <= y < h and mask[y, x] > 0):
+            continue
+        left = x
+        while left > 0 and mask[y, left - 1] > 0:
+            left -= 1
+        right = x
+        while right + 1 < w and mask[y, right + 1] > 0:
+            right += 1
+        widths.append(right - left + 1)
+    median = float(np.median(widths)) if widths else 0.0
+    ratio = median / max(typical_width, 1.0)
+    # Palm-crossing lines create implausibly huge widths and are rejected later.
+    return median, float(ratio), bool(median <= 0.48 * glove_w)
+
+
+def _seam_candidates(edges, mask, bounds):
+    gx, gy, gw, gh = bounds
+    minimum_length = max(18, int(round(MIN_SEAM_LENGTH_RATIO * gh)))
+    lines = cv2.HoughLinesP(
+        edges, 1, np.pi / 180.0,
+        threshold=max(12, int(round(0.022 * gh))),
+        minLineLength=minimum_length,
+        maxLineGap=max(7, int(round(0.025 * gh))),
+    )
+    if lines is None:
+        return []
+
+    # Cotton weave can create hundreds of Hough lines. Apply cheap orientation
+    # and length checks first, then run costly side/width/prominence analysis on
+    # only the longest plausible lines.
+    prefiltered = []
+    for raw in lines[:, 0]:
+        line = tuple(int(value) for value in raw)
+        x1, y1, x2, y2 = line
+        dx, dy = float(x2 - x1), float(y2 - y1)
+        length = float(np.hypot(dx, dy))
+        verticality = abs(dy) / max(length, 1.0)
+        if length < minimum_length or verticality < MIN_VERTICALITY:
+            continue
+        prefiltered.append((line, length, verticality))
+
+    prefiltered.sort(key=lambda item: item[1], reverse=True)
+    prefiltered = prefiltered[:MAX_HOUGH_LINES_TO_ANALYSE]
+
+    distance = cv2.distanceTransform((mask > 0).astype(np.uint8), cv2.DIST_L2, 5)
+    typical = _typical_finger_width(mask, bounds)
+    candidates = []
+    for line, length, verticality in prefiltered:
+        x1, y1, x2, y2 = line
+
+        distances = [distance[y, x] for x, y in _samples(line, 21)
+                     if 0 <= x < mask.shape[1] and 0 <= y < mask.shape[0]]
+        boundary_distance = float(np.median(distances)) if distances else 0.0
+        if boundary_distance < max(2.0, MIN_BOUNDARY_DISTANCE_RATIO * gw):
+            continue
+
+        side = _side_support(mask, line, gw)
+        continuity = _line_continuity(edges, line, max(2, int(round(0.006 * gw))))
+        width, width_ratio, plausible_width = _merged_width(mask, line, typical, gw)
+        if side < MIN_SIDE_SUPPORT or continuity < MIN_EDGE_CONTINUITY or not plausible_width:
+            continue
+        # This is the most expensive candidate measurement, so compute it only
+        # after the cheaper geometry checks have accepted the line.
+        prominence = _seam_prominence(edges, line, gw)
+
+        length_score = float(np.clip(
+            (length / gh - MIN_SEAM_LENGTH_RATIO)
+            / (STRONG_SEAM_LENGTH_RATIO - MIN_SEAM_LENGTH_RATIO), 0.0, 1.0))
+        boundary_score = float(np.clip(boundary_distance / (0.05 * gw), 0.0, 1.0))
+        width_score = float(np.clip(
+            (width_ratio - MIN_MERGED_WIDTH_RATIO)
+            / (STRONG_MERGED_WIDTH_RATIO - MIN_MERGED_WIDTH_RATIO), 0.0, 1.0))
+        top_ratio = (min(y1, y2) - gy) / max(float(gh), 1.0)
+        top_score = float(np.clip((0.50 - top_ratio) / 0.40, 0.0, 1.0))
+        score = float(np.clip(
+            0.16 * length_score + 0.12 * verticality + 0.15 * continuity
+            + 0.14 * side + 0.08 * boundary_score + 0.22 * width_score
+            + 0.04 * top_score + 0.09 * prominence, 0.0, 1.0))
+        # An internal seam inside a genuinely broad lobe is more relevant than
+        # a high-contrast wrinkle inside a normal-width finger.
+        if width_ratio >= STRONG_MERGED_WIDTH_RATIO and side >= 0.68:
+            score = min(1.0, score + 0.07)
+        candidates.append({
+            "line": line, "score": score, "length": length,
+            "length_ratio": length / gh, "verticality": verticality,
+            "continuity": continuity, "side_support": side,
+            "prominence": prominence,
+            "boundary_distance": boundary_distance, "typical_width": typical,
+            "merged_width": width, "width_ratio": width_ratio,
+        })
+    return sorted(candidates, key=lambda item: item["score"], reverse=True)
+
+
+def detect_touching(processed, segmentation):
+    glove_mask = None if segmentation is None else segmentation.get("glove_mask")
+    glove_area = 0 if segmentation is None else int(segmentation.get("glove_area", 0) or 0)
+    if glove_mask is None or glove_area <= 0 or glove_mask.ndim != 2:
+        return _empty_result(None if glove_mask is None else glove_mask.shape)
+    mask = np.where(glove_mask > 0, 255, 0).astype(np.uint8)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not contours:
+        return _empty_result(mask.shape)
+    contour = max(contours, key=cv2.contourArea)
+    gx, gy, gw, gh = cv2.boundingRect(contour)
+    if gw < 30 or gh < 50:
+        return _empty_result(mask.shape)
+    bounds = (gx, gy, gw, gh)
+
+    gray = None if processed is None else processed.get("gray_enhanced")
+    if gray is None and processed is not None:
+        gray = processed.get("gray")
+    if gray is None or gray.shape[:2] != mask.shape:
+        return _empty_result(mask.shape)
+
+    topology = _topology(contour, bounds)
+    edges, _, edge_density, canny_low, canny_high = _adaptive_edges(gray, mask, bounds)
+    candidates = _seam_candidates(edges, mask, bounds)
+    textured_glove = edge_density >= 0.10
+    if textured_glove:
+        # Rank only candidates that stand out from the weave and occur inside a
+        # widened lobe. Do not let the strongest ordinary knitted rib prevent a
+        # slightly weaker but physically plausible overlap seam from winning.
+        eligible = [
+            item for item in candidates
+            if item["prominence"] >= 0.04 and item["width_ratio"] >= 1.35
+        ]
+        best = eligible[0] if eligible else None
+    else:
+        best = candidates[0] if candidates else None
+
+    gap_count = topology["gap_count"]
+    exactly_one_missing = gap_count == EXPECTED_GAPS - 1
+    multiple_missing = gap_count <= EXPECTED_GAPS - 2
+    seam_score = 0.0 if best is None else float(best["score"])
+    width_ratio = 0.0 if best is None else float(best["width_ratio"])
+
+    # Dense cotton weave or many wrinkles yield numerous competing Hough lines.
+    texture_penalty = float(np.clip(
+        (edge_density - 0.10) / (MAX_UPPER_EDGE_DENSITY - 0.10), 0.0, 1.0))
+    multiplicity_penalty = float(np.clip((len(candidates) - 4) / 8.0, 0.0, 1.0))
+    adjusted_seam = float(np.clip(
+        seam_score - 0.16 * texture_penalty - 0.10 * multiplicity_penalty, 0.0, 1.0))
+
+    # On a highly textured glove, accept only a locally unique seam situated
+    # inside a clearly broad lobe. This removes straight knitted ribs while
+    # retaining the darker boundary created by two overlapping fingers.
+    texture_localisation_ok = bool(
+        best is not None and (
+            not textured_glove
+            or (best["prominence"] >= 0.04 and width_ratio >= 1.35)
+        )
+    )
+
+    normal_case = bool(
+        best is not None and texture_localisation_ok
+        and exactly_one_missing and adjusted_seam >= 0.36
+        and 1.05 <= width_ratio <= MAX_MERGED_WIDTH_RATIO)
+    strong_seam_case = bool(
+        best is not None and texture_localisation_ok and adjusted_seam >= 0.68
+        and 1.18 <= width_ratio <= MAX_MERGED_WIDTH_RATIO
+        and best["side_support"] >= 0.68 and best["continuity"] >= 0.48)
+    severe_overlap_case = bool(
+        best is not None and texture_localisation_ok
+        and multiple_missing and gap_count >= 2
+        and adjusted_seam >= 0.62 and width_ratio >= STRONG_MERGED_WIDTH_RATIO)
+
+    topology_score = 1.0 if exactly_one_missing else (0.58 if multiple_missing else 0.0)
+    width_score = float(np.clip(
+        (width_ratio - 1.0) / (STRONG_MERGED_WIDTH_RATIO - 1.0), 0.0, 1.0))
+    raw_score = float(np.clip(
+        0.43 * topology_score + 0.43 * adjusted_seam + 0.14 * width_score,
+        0.0, 1.0))
+    detected = bool(normal_case or strong_seam_case or severe_overlap_case)
+    score = raw_score if detected else min(raw_score, DETECTION_SCORE_THRESHOLD - 0.01)
+
+    defect_mask = np.zeros_like(mask)
+    box = None
+    if detected and best is not None:
+        radius = max(7, int(round(0.032 * gw)))
+        x1, y1, x2, y2 = best["line"]
+        cv2.line(defect_mask, (x1, y1), (x2, y2), 255, 2 * radius + 1, cv2.LINE_AA)
+        defect_mask = cv2.bitwise_and(defect_mask, mask)
+        points = cv2.findNonZero(defect_mask)
+        if points is not None:
+            x, y, w, h = cv2.boundingRect(points)
+            box = (int(x), int(y), int(w), int(h))
+
+    area_pct = 100.0 * np.count_nonzero(defect_mask) / float(glove_area)
+    measurements = {
+        "area_pct": round(float(area_pct), 3),
+        "deep_finger_gap_count": int(gap_count),
+        "missing_gap_count": int(topology["missing"]),
+        "upper_edge_density": round(float(edge_density), 4),
+        "canny_low": int(canny_low),
+        "canny_high": int(canny_high),
+        "seam_candidates": int(len(candidates)),
+        "adjusted_seam_score": round(float(adjusted_seam), 4),
+        "texture_penalty": round(float(texture_penalty), 4),
+        "textured_glove": bool(textured_glove),
+        "texture_localisation_ok": bool(texture_localisation_ok),
+        "merged_width_ratio": round(float(width_ratio), 4),
+        "decision_path": (
+            "one_missing_gap_plus_seam" if normal_case else
+            "very_strong_seam" if strong_seam_case else
+            "severe_overlap" if severe_overlap_case else "rejected"
         ),
-        "detection_score": round(
-            float(final_score),
-            6,
-        ),
-        "bounding_box": bbox,
+    }
+    if best is not None:
+        measurements.update({
+            "seam_length_ratio": round(float(best["length_ratio"]), 4),
+            "seam_verticality": round(float(best["verticality"]), 4),
+            "seam_continuity": round(float(best["continuity"]), 4),
+            "seam_prominence": round(float(best["prominence"]), 4),
+            "seam_side_support": round(float(best["side_support"]), 4),
+            "boundary_distance_px": round(float(best["boundary_distance"]), 2),
+        })
+
+    return {
+        "defect_name": "touching",
+        "detected": bool(detected),
+        "detection_score": float(np.clip(score, 0.0, 1.0)),
+        "algorithm": ALGORITHM,
+        "bounding_box": box,
         "mask": defect_mask,
         "measurements": measurements,
-    })
-
-    return result
-
-
-# ============================================================
-# OPTIONAL DEVELOPMENT VISUALISATION
-# ============================================================
-
-def debug_touching(
-    processed: dict,
-    segmentation: dict,
-):
-    """
-    Optional helper for local development.
-
-    Returns a BGR debug image showing:
-    - glove mask outline
-    - accepted overlap seam
-    - final bounding box
-
-    This function is not used by evaluate.py.
-    """
-    original = processed.get(
-        "original"
-    )
-
-    if original is None:
-        return None
-
-    output = original.copy()
-
-    result = detect_touching(
-        processed,
-        segmentation,
-    )
-
-    mask = segmentation.get(
-        "glove_mask"
-    )
-
-    if mask is not None:
-        contours, _ = cv2.findContours(
-            _binary_mask(mask),
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-
-        cv2.drawContours(
-            output,
-            contours,
-            -1,
-            (0, 255, 255),
-            2,
-        )
-
-    line = result.get(
-        "measurements",
-        {},
-    ).get(
-        "contact_line"
-    )
-
-    if line is not None:
-        x1, y1, x2, y2 = [
-            int(v)
-            for v in line
-        ]
-
-        cv2.line(
-            output,
-            (x1, y1),
-            (x2, y2),
-            (0, 0, 255),
-            3,
-            cv2.LINE_AA,
-        )
-
-    bbox = result.get(
-        "bounding_box"
-    )
-
-    if bbox is not None:
-        x, y, w, h = [
-            int(v)
-            for v in bbox
-        ]
-
-        cv2.rectangle(
-            output,
-            (x, y),
-            (x + w, y + h),
-            (255, 0, 255),
-            2,
-        )
-
-    return output
+    }
