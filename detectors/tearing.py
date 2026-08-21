@@ -104,7 +104,9 @@ MAX_EROSION_PX = 30
 # tear patches (skin tone, or a frayed dark gap for knit cotton) sit
 # well above both somewhere in their interior, while normal per-pixel
 # shading noise mostly stays below them.
+# TUNED-BY-EYE on the 68-image dataset
 MIN_COLOUR_DISTANCE = 22.0        # LAB a/b distance
+# TUNED-BY-EYE on the 68-image dataset
 MIN_LIGHTNESS_DISTANCE = 28.0     # LAB L distance
 
 # Below this fraction of glove_area, the largest anomaly blob is
@@ -114,6 +116,7 @@ MIN_HOLE_AREA_RATIO = 0.02        # 2% of glove_area
 
 # Hole area ratio at/above which the score saturates to 1.0. Measured
 # largest-blob ratios on the 5 known tearing images ranged ~6.4%-10.7%.
+# TUNED-BY-EYE on the 68-image dataset
 STRONG_HOLE_AREA_RATIO = 0.09     # 9% of glove_area
 
 # Above this fraction of glove_area, the candidate is rejected outright

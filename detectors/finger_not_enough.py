@@ -168,6 +168,7 @@ EXPECTED_MAIN_FINGERS = 4
 # genuinely-present main finger that's merely shorter than its
 # neighbours (not the thumb) never dropped below ~0.4 while also being
 # the leftmost peak.
+# TUNED-BY-EYE on the 68-image dataset
 THUMB_LENGTH_RATIO = 0.4
 
 # _find_bulge's prominence (px, in this dataset's resized-to-1000px-
@@ -176,6 +177,7 @@ THUMB_LENGTH_RATIO = 0.4
 # out an edge as a missing-finger location. Calibrated so a confirmed
 # thumb bulge (15-109px prominence across this dataset's cases) still
 # passes, while background/mask noise (<5px) does not.
+# TUNED-BY-EYE on the 68-image dataset
 BULGE_MIN_PROMINENCE_PX = 20
 
 # An edge gap only counts as a plausible missing-finger location if
@@ -190,11 +192,13 @@ EDGE_MIN_RATIO_FOR_CANDIDACY = 0.7
 # interior gap - a genuinely fused/missing interior finger showed a
 # 2.3-3.3x margin on this dataset's known cases, well clear of the
 # ~1.2-1.3x margin that's just normal finger-spacing variation.
+# TUNED-BY-EYE on the 68-image dataset
 STRONG_INTERIOR_MARGIN = 2.0
 
 # Same idea, for the case where there's only one interior gap to judge
 # (so no "margin over the others" can be computed) - an absolute ratio
 # bar instead.
+# TUNED-BY-EYE on the 68-image dataset
 STRONG_INTERIOR_SINGLE_RATIO = 1.3
 
 # --- Gap-based localisation of a missing/fused finger ---

@@ -181,7 +181,9 @@ MAX_EROSION_PX = 30
 # Recall on the target category is what evaluate.py actually scores
 # (see tearing.py's docstring - no true negatives are tested against a
 # detector in the real pipeline), so the plain OR is kept.
+# TUNED-BY-EYE on the 68-image dataset
 MIN_COLOUR_DISTANCE = 22.0        # LAB a/b distance
+# TUNED-BY-EYE on the 68-image dataset
 MIN_LIGHTNESS_DISTANCE = 28.0     # LAB L distance
 
 # ROI-area ratio at/above which the score saturates to 1.0. Measured
@@ -192,6 +194,7 @@ MIN_LIGHTNESS_DISTANCE = 28.0     # LAB L distance
 # MIN_HOLE_AREA_RATIO/MIN_EDGE_SUPPORT_PX candidate-stage gates ever
 # were, so dropping those in favour of composite ranking (see PROBLEM 1
 # in the module docstring) didn't loosen anything at the final decision.
+# TUNED-BY-EYE on the 68-image dataset
 STRONG_HOLE_AREA_RATIO = 0.50     # 50% of the fingertip ROI area
 
 CANNY_LOW, CANNY_HIGH = 50, 150
@@ -232,6 +235,7 @@ _RING_KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (RING_KERNEL_PX, RIN
 # dataset's 6 known images, the translucent-latex image's largest
 # candidate ratio (0.26) sits far below every other image's (0.45-0.72)
 # - this cap sits in that gap with margin on both sides.
+# TUNED-BY-EYE on the 68-image dataset
 TRANSLUCENT_MAX_RATIO_CAP = 0.30
 
 # --- Blob merging / box quality ---
