@@ -1,9 +1,26 @@
-"""Shared colour-anomaly processing for the dirty, stain and spotting detectors."""
+"""Shared colour-anomaly processing for the dirty, stain and spotting detectors.
+
+Dirty, stain and spotting are all foreign material sitting on an otherwise
+uniform glove surface, and all three are darker than the glove. They share the
+first question - which pixels do not look like glove material? - and differ only
+in the second - what shape is that material? Separating the two questions means
+the hard part (telling contamination apart from shading, wrinkles and
+segmentation leakage) is solved and justified once here, and the three detectors
+stay small enough to read.
+
+Not a detector. The leading underscore keeps it out of DETECTOR_REGISTRY.
+"""
 
 import cv2
 import numpy as np
 
 
+# A glove is curved, so the last few millimetres before its silhouette are always
+# in self-shadow, and the segmentation boundary itself sits on a colour ramp
+# between glove and background. Both look exactly like "a dark region on the
+# glove" to a colour test, and in testing they were the single largest source of
+# false positives. The margin scales with the glove's own equivalent radius
+# rather than the image size, so it does not assume a fixed framing.
 def glove_interior(glove_mask, margin_ratio=0.09, min_margin=10, max_margin=40):
     """Remove a scale-aware margin from the glove silhouette.
 
@@ -43,6 +60,29 @@ def glove_interior(glove_mask, margin_ratio=0.09, min_margin=10, max_margin=40):
     return interior
 
 
+# Flat-field illumination model: what would this pixel look like if the glove
+# were clean here? Comparing against a LOCAL estimate rather than one global
+# average is what makes the detectors tolerant of uneven lighting, which the
+# brief explicitly requires.
+#
+# A median filter is used rather than the two more obvious alternatives, both of
+# which were tried first and failed:
+#   - morphological closing takes a local maximum, so one specular highlight
+#     propagates across its whole neighbourhood and makes the entire glove read
+#     as "too dark" by comparison. This drove some test images to 99% anomaly
+#     area.
+#   - a Gaussian blur has the opposite failure: large dark defects drag the
+#     estimate down and so conceal themselves.
+# A median ignores both as long as they occupy less than half the window.
+#
+# Two further robustness measures: highlights are clipped before filtering so the
+# brightest speculars cannot bias the estimate at all, and a second pass lifts
+# pixels darker than the first estimate up to it, because a large dirty patch can
+# occupy more than half a window and defeat a single median pass.
+#
+# Filtering runs on a downsampled copy: the window must be large compared with
+# the defects, and a large median at full resolution is far too slow for an
+# interactive GUI.
 def robust_background(channel, mask, scale=8, ksize=11, passes=2):
     """Estimate a smooth, defect-free version of one LAB channel.
 
@@ -94,6 +134,10 @@ def robust_background(channel, mask, scale=8, ksize=11, passes=2):
     return background
 
 
+# Splitting the LAB difference into a lightness term and a chroma term keeps the
+# two cues independent, so a rust-coloured speck that is barely darker than pale
+# latex is still caught by chroma, and a black ink streak on blue nitrile is
+# still caught by lightness.
 def anomaly_fields(processed, interior_mask):
     """Build lightness, chroma and edge maps for anomaly detection.
 
@@ -132,6 +176,7 @@ def anomaly_fields(processed, interior_mask):
     gradient = cv2.magnitude(gx, gy)
 
     return {
+        "lab": lab,
         "dark_abs": dark_abs,
         "dark_rel": dark_rel,
         "chroma": chroma,
@@ -139,6 +184,54 @@ def anomaly_fields(processed, interior_mask):
         "L": L,
         "background_L": background_L,
     }
+
+
+# Two decisions matter here.
+#
+# First, the darkening test is a CONJUNCTION of an absolute and a relative
+# threshold. The relative term alone fires on dark gloves, where a few L units is
+# a large fraction; the absolute term alone fires on bright gloves under uneven
+# light. Requiring both keeps the test stable across nitrile, latex and cotton.
+#
+# Second, the thresholds are fixed constants rather than a per-image adaptive
+# rule such as Otsu. Otsu always returns a split, so on a perfectly clean glove it
+# manufactures a "defect" out of ordinary shading. Since the system must be able
+# to answer "no defect here", an absolute physical threshold is the correct
+# choice and a data-driven one is not.
+#
+# The opening removes wrinkle and crease lines, which are one or two pixels wide
+# and survive thresholding on latex and nitrile; a defect wide enough to matter
+# survives it.
+def background_reference(processed, glove_mask):
+    """
+    Median LAB colour of whatever segmentation decided was NOT glove.
+
+    Used to recognise segmentation leakage. When the glove mask over-reaches
+    and swallows a patch of the photographic background, that patch is darker
+    and differently coloured than the glove, so every colour test flags it as a
+    large, confident defect. It is not one.
+
+    A region that matches the background colour almost certainly IS background,
+    so this reference lets such regions be discarded without re-running or
+    second-guessing segmentation - it uses segmentation's own output as the
+    reference. Real contamination sits on the glove and does not match the
+    backdrop.
+
+    The mask is dilated before sampling so the colour ramp at the glove edge is
+    excluded from the estimate.
+    """
+    outside = glove_mask == 0
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (31, 31))
+    grown = cv2.dilate((glove_mask > 0).astype(np.uint8), kernel)
+    outside = outside & (grown == 0)
+    if np.count_nonzero(outside) < 500:
+        return None
+    lab = processed["lab"].astype(np.float32)
+    return np.array([
+        float(np.median(lab[:, :, 0][outside])),
+        float(np.median(lab[:, :, 1][outside])),
+        float(np.median(lab[:, :, 2][outside])),
+    ], dtype=np.float32)
 
 
 def candidate_mask(fields, interior_mask,
@@ -179,7 +272,19 @@ def candidate_mask(fields, interior_mask,
     return candidate
 
 
-def describe_blobs(candidate, fields, interior_mask, min_area=20):
+# Every downstream decision is made from this feature table, so each measurement
+# is chosen to separate the three defects from each other and from the benign
+# structures that survive thresholding.
+#
+# edge_contact does most of the false-positive suppression. Surface contamination
+# is SURROUNDED by glove material: a stain has clean glove on every side. Two of
+# the three things that survive thresholding do not have that property - forearm
+# skin that segmentation failed to cut away runs off the bottom of the analysed
+# area, and the shading band along a curved finger runs along its silhouette.
+# Both therefore have most of their perimeter on the boundary, and one ratio
+# separates them from real defects without modelling skin colour or redoing any
+# segmentation.
+def describe_blobs(candidate, fields, interior_mask, min_area=20, background_lab=None):
     """Describe connected candidate regions using shape and contrast features.
 
     Parameters
@@ -257,6 +362,20 @@ def describe_blobs(candidate, fields, interior_mask, min_area=20):
         values = L[region]
         texture = float(values.std() / (values.mean() + 1e-3))
 
+        # Distance from this region's own colour to the photographic
+        # background. Small means the region is almost certainly background
+        # that segmentation included by mistake, not contamination.
+        if background_lab is None:
+            bg_distance = 1e6
+        else:
+            lab = fields["lab"]
+            region_lab = np.array([
+                float(np.median(lab[:, :, 0][region])),
+                float(np.median(lab[:, :, 1][region])),
+                float(np.median(lab[:, :, 2][region])),
+            ], dtype=np.float32)
+            bg_distance = float(np.linalg.norm(region_lab - background_lab))
+
         blobs.append({
             "area": area,
             "area_frac": area / glove_area,
@@ -268,28 +387,42 @@ def describe_blobs(candidate, fields, interior_mask, min_area=20):
             "mean_dark": depth,
             "edge_sharp": edge_sharp,
             "edge_contact": edge_contact,
+            "bg_distance": bg_distance,
             "texture": texture,
         })
 
     return blobs
 
 
-def accept_blobs(blobs, max_edge_contact=0.30):
-    """Keep regions whose boundary is mostly surrounded by glove material.
-
-    Parameters
-    ----------
-    blobs : list
-        Region feature dictionaries.
-    max_edge_contact : float
-        Maximum allowed boundary contact ratio.
-
-    Returns
-    -------
-    list
-        Accepted region dictionaries.
+def accept_blobs(blobs, max_edge_contact=0.30,
+                 compact_area_frac=0.020, compact_edge_contact=0.60,
+                 min_bg_distance=14.0):
     """
-    return [b for b in blobs if b["edge_contact"] < max_edge_contact]
+    Drop regions that are not surrounded by glove material.
+
+    The structures this rejects - forearm skin the segmentation failed to cut,
+    and the shading band along a curved finger - are all LARGE regions that run
+    along the boundary. A small compact defect can also touch the boundary
+    heavily without being either of those, simply because it sits inside a
+    narrow structure: a smudge on a fingertip is only a few millimetres from
+    the silhouette on three sides, and a single flat threshold discards it.
+
+    The limit is therefore relaxed for regions below `compact_area_frac` of the
+    glove. Size is what separates the two cases: a skin band is a substantial
+    fraction of the glove, a fingertip smudge is not.
+    """
+    kept = []
+    for blob in blobs:
+        # Regions whose colour matches the photographic backdrop are
+        # segmentation leakage, not contamination.
+        if blob.get("bg_distance", 1e6) < min_bg_distance:
+            continue
+        limit = (compact_edge_contact
+                 if blob["area_frac"] < compact_area_frac
+                 else max_edge_contact)
+        if blob["edge_contact"] < limit:
+            kept.append(blob)
+    return kept
 
 
 def cloud_statistics(blobs, defect_mask, fields, interior_mask):
@@ -381,13 +514,31 @@ def cloud_statistics(blobs, defect_mask, fields, interior_mask):
     }
 
 
-# Chroma distance required for colour evidence.
+# Shadow rejection constants.
+#
+# A cast shadow scales the illumination reaching a surface, so it moves lightness
+# but leaves the surface hue essentially untouched: its a/b deviation stays near
+# zero. Foreign material has its own reflectance and does shift a/b - brown
+# liquid, rust-coloured specks, black ink pulling blue nitrile towards neutral.
+#
+# a/b distance at which a pixel counts as genuinely discoloured rather than merely
+# shaded. Matches the chroma_min used to build the candidate mask, so the two
+# tests are expressed in the same units.
 CHROMA_EVIDENCE = 8.0
 
-# Range over which colour evidence increases confidence.
+# Ramp over which colour evidence is treated as convincing. Placed from the
+# measured distributions: clear shadow cases score near zero (bunched cotton
+# 0.000, creased latex 0.065) and strongly coloured defects score 0.6-0.96, but an
+# overlap band near 0.09-0.18 contains BOTH the weakest true positive (small brown
+# marks on pale latex, 0.089) and the strongest shadow case (folded cotton, 0.099).
 CHROMATIC_RAMP = (0.02, 0.20)
 
-# Minimum score multiplier when colour evidence is absent.
+# How much of the score a region with no colour evidence at all retains. Because of
+# the overlap above, the test is applied as a soft multiplier rather than a hard
+# veto: a veto set tight enough to catch the folded-cotton case would also reject
+# the true stain, i.e. it would remove more true positives than false ones. The
+# floor is also high enough that genuinely achromatic contamination - grey dust on
+# a white cotton glove - can still be detected on shape evidence alone.
 SHADOW_FLOOR = 0.65
 
 
@@ -476,18 +627,7 @@ def blobs_to_mask(blobs, candidate, shape):
 
 
 def union_bbox(blobs):
-    """Return the smallest box containing all accepted regions.
-
-    Parameters
-    ----------
-    blobs : list
-        Region dictionaries containing bounding boxes.
-
-    Returns
-    -------
-    tuple or None
-        Bounding box, or ``None`` when no regions are supplied.
-    """
+    """Smallest box containing every accepted region, or None."""
     if not blobs:
         return None
     xs0 = min(b["bbox"][0] for b in blobs)
@@ -495,6 +635,153 @@ def union_bbox(blobs):
     xs1 = max(b["bbox"][0] + b["bbox"][2] for b in blobs)
     ys1 = max(b["bbox"][1] + b["bbox"][3] for b in blobs)
     return (int(xs0), int(ys0), int(xs1 - xs0), int(ys1 - ys0))
+
+
+def localisation_blobs(blobs, cuff_fraction=0.88):
+    """
+    Regions eligible to carry the reported bounding box.
+
+    On knit cotton the ribbed cuff is a different structure from the glove
+    body: it is darker, coarser, and it traps grime, so it thresholds into one
+    of the largest regions on the image. On a heavily soiled glove that single
+    cuff region outweighs the real soiling on the fingers and palm, and the box
+    is drawn around the wrist while the visible dirt sits outside it.
+
+    The cuff is excluded from box selection only - never from scoring. Two
+    reasons. A soiled cuff is genuinely soiled, so removing it from the score
+    would be wrong and it costs a true positive when tried. And the cuff is
+    already another detector's subject (incomplete_beading), so it is not this
+    detector's job to describe it. Detection therefore sees the whole glove
+    while the box points at the part a user needs to look at.
+
+    If every region falls in the cuff band the full set is returned, so a glove
+    soiled only at the wrist still gets a box.
+    """
+    if not blobs:
+        return blobs
+    top = min(b["bbox"][1] for b in blobs)
+    bottom = max(b["bbox"][1] + b["bbox"][3] for b in blobs)
+    limit = top + cuff_fraction * (bottom - top)
+    eligible = [b for b in blobs if b["centroid"][1] < limit]
+    return eligible if eligible else blobs
+
+
+def dominant_bbox(blobs, equivalent_radius, gap_ratio=0.10):
+    """
+    Box around the strongest concentration of defect evidence.
+
+    A union box over every accepted region is a poor way to show a user where a
+    defect is. Scattered weak responses - weave texture, residual shading -
+    stretch it across most of the glove, so the box ends up highlighting
+    everything and therefore nothing, and can easily fail to sit on the actual
+    mark at all.
+
+    Instead, regions closer together than `gap_ratio` of the glove radius are
+    grouped, and the group carrying the most evidence is boxed. Evidence is
+    weighted by the SQUARE of each region's contrast, so a small, deeply
+    coloured mark outranks a large, faint one: a fingertip smudge at 0.39 mean
+    darkening beats a broad shading band at 0.26 covering ten times the area.
+    Contrast is what makes something a defect rather than a gradient, so it is
+    what the box should follow.
+
+    The full extent stays visible through the returned mask, which the GUI fills
+    semi-transparently; this only decides where the rectangle goes.
+    """
+    if not blobs:
+        return None
+    if len(blobs) == 1:
+        return tuple(int(v) for v in blobs[0]["bbox"])
+
+    gap = max(8.0, gap_ratio * equivalent_radius)
+
+    # Single-link grouping on bounding-box separation.
+    groups = []
+    for blob in blobs:
+        x, y, w, h = blob["bbox"]
+        placed = False
+        for group in groups:
+            for other in group:
+                ox, oy, ow, oh = other["bbox"]
+                dx = max(0, max(ox - (x + w), x - (ox + ow)))
+                dy = max(0, max(oy - (y + h), y - (oy + oh)))
+                if (dx * dx + dy * dy) ** 0.5 <= gap:
+                    group.append(blob)
+                    placed = True
+                    break
+            if placed:
+                break
+        if not placed:
+            groups.append([blob])
+
+    def evidence(group):
+        # Area weighted by the square of contrast. Neither term alone works:
+        # pure area follows residual shading and cuffs, which are broad; pure
+        # contrast follows whichever single region is darkest, which on a knit
+        # glove can be the cuff rather than the mark. This is a compromise, and
+        # on images where a large low-contrast structure survives thresholding
+        # it still loses to that structure - see LIMITATIONS.
+        return sum(b["area"] * (b["mean_dark"] ** 2) for b in group)
+
+    return union_bbox(max(groups, key=evidence))
+
+
+def background_guarded_interior(processed, glove_mask, tolerance=25.0):
+    """
+    Build the analysed region, excluding pixels that are photographic background.
+
+    Segmentation sometimes over-reaches and swallows a strip of the backdrop -
+    on cotton_dirty_1 the mask extends so far past the glove's right edge that
+    the true silhouette sits roughly a hundred pixels INSIDE the mask. The
+    glove's own dark rim is then interior rather than boundary, so neither the
+    distance-transform margin nor the perimeter-contact test can remove it, and
+    it thresholds into a single region ten times the size of the real defect.
+    Because that region is large, it dominates any area-weighted localisation
+    and the reported box lands on the glove edge instead of on the mark.
+
+    The fix is to remove background-coloured pixels from the analysed region
+    BEFORE thresholding, so the spurious rim never forms a region at all.
+    Segmentation's own output supplies the reference colour, so this does not
+    re-run or second-guess segmentation - it only declines to analyse pixels
+    that segmentation itself would call background if it looked again.
+
+    After masking, a small opening removes speckle and only the largest
+    connected component is kept, so the analysed region stays a single glove
+    rather than a scatter of fragments.
+
+    Parameters
+    ----------
+    processed : dict
+        Output of preprocessing.preprocess_image().
+    glove_mask : numpy.ndarray
+        Binary glove mask (0/255) from segmentation.py.
+    tolerance : float
+        LAB distance below which a pixel counts as background. Set from the
+        measured gap between the backdrop and genuine contamination; at 25 the
+        spurious rim disappears while every true defect survives, and raising
+        it further starts to erode real marks.
+
+    Returns
+    -------
+    numpy.ndarray
+        Binary interior mask (0/255), already margin-eroded.
+    """
+    background_lab = background_reference(processed, glove_mask)
+    mask = (glove_mask > 0).astype(np.uint8) * 255
+
+    if background_lab is not None:
+        lab = processed["lab"].astype(np.float32)
+        distance = np.sqrt(((lab - background_lab.reshape(1, 1, 3)) ** 2).sum(axis=2))
+        mask[distance < tolerance] = 0
+
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+        if count > 1:
+            largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+            mask = (labels == largest).astype(np.uint8) * 255
+
+    return glove_interior(mask)
 
 
 def prepare(processed, segmentation, **candidate_kwargs):
@@ -514,12 +801,13 @@ def prepare(processed, segmentation, **candidate_kwargs):
     tuple(dict or None, numpy.ndarray, list, numpy.ndarray)
         Fields, candidate mask, blob table and interior mask.
     """
-    interior = glove_interior(segmentation["glove_mask"])
+    interior = background_guarded_interior(processed, segmentation["glove_mask"])
     if interior is None or int(np.count_nonzero(interior)) < 500:
         empty = np.zeros(processed["gray"].shape[:2], dtype=np.uint8)
         return None, empty, [], empty
 
     fields = anomaly_fields(processed, interior)
     candidate = candidate_mask(fields, interior, **candidate_kwargs)
-    blobs = describe_blobs(candidate, fields, interior)
+    background_lab = background_reference(processed, segmentation["glove_mask"])
+    blobs = describe_blobs(candidate, fields, interior, background_lab=background_lab)
     return fields, candidate, blobs, interior

@@ -1,4 +1,19 @@
-"""Detect discrete spotting using LAB anomalies and speck geometry."""
+"""Detect discrete spotting using LAB anomalies and speck geometry.
+
+On pale latex the specks are rust/orange; on blue nitrile they are near-black.
+In both cases the marks are small, close to circular, and separated from each
+other by clean glove.
+
+That last property is what distinguishes spotting from dirty, which otherwise
+produces a similar count of small dark regions on knit cotton. Dirt is a smear:
+the glove between the specks is also soiled. Spots are discrete: the glove
+between them is clean. The isolation statistic in _anomaly.cloud_statistics
+measures exactly this and is the single feature that keeps the two apart.
+
+Thresholds were chosen by inspecting feature distributions on the group's own
+dataset. They are not learned, and were tuned on the same images used for
+testing, so the reported detection rate is optimistic.
+"""
 
 import numpy as np
 
@@ -77,6 +92,8 @@ def detect_spotting(processed: dict, segmentation: dict) -> dict:
         return result
 
     # Count and isolation distinguish spotting from diffuse soiling.
+    # Count and isolation carry the most weight because they are what distinguish
+    # spotting from a dirt smear; shape and size confirm the regions are specks.
     evidence = _anomaly.combine([
         (0.30, _anomaly.ramp(stats["count"], *COUNT_RAMP)),
         (0.25, _anomaly.ramp(stats["isolation"], *ISOLATION_RAMP)),
@@ -91,7 +108,8 @@ def detect_spotting(processed: dict, segmentation: dict) -> dict:
 
     result["detected"] = bool(score >= DECISION_THRESHOLD)
     result["detection_score"] = round(float(score), 4)
-    result["bounding_box"] = _anomaly.union_bbox(specks)
+    result["bounding_box"] = _anomaly.dominant_bbox(
+        _anomaly.localisation_blobs(specks), stats["equivalent_radius"])
     result["mask"] = speck_mask
     result["measurements"] = {
         "speck_count": int(stats["count"]),

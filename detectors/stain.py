@@ -1,4 +1,19 @@
-"""Detect liquid-like stains using LAB anomalies and region geometry."""
+"""Detect liquid-like stains using LAB anomalies and region geometry.
+
+Dark brown coffee-like marks on pale latex, near-black ink-like strokes on blue
+nitrile. In both materials the mark is a STROKE: much longer than it is wide,
+with a hard edge where the liquid stopped, and far larger than a spot.
+
+Against the other two defects in this member's set: a stain region is an order
+of magnitude larger than a spot and clearly elongated; and unlike soiling it
+leaves the surrounding glove clean instead of fading outward into a halo. So the
+decisive features are the isolation ratio, region size, elongation and low
+circularity.
+
+Thresholds were chosen by inspecting feature distributions on the group's own
+dataset. They are not learned, and were tuned on the same images used for
+testing, so the reported detection rate is optimistic.
+"""
 
 import numpy as np
 
@@ -73,6 +88,12 @@ def detect_stain(processed: dict, segmentation: dict) -> dict:
         return result
 
     # Isolation prevents diffuse soiling from being relabelled as stain.
+    # Isolation carries the most weight, and it is what stops this detector from
+    # relabelling every dirty glove as stained. A stain leaves the glove around it
+    # clean, so its darkening is many times that of its surroundings (5.5-17.7 on
+    # the true stains). Soiling fades outward into a halo, so the same ratio stays
+    # low (3.3-4.6 on the dirty images). Size and shape then confirm the mark is a
+    # stroke rather than a speck.
     evidence = _anomaly.combine([
         (0.38, _anomaly.ramp(stats["isolation"], *ISOLATION_RAMP)),
         (0.20, _anomaly.ramp(stats["max_area_frac"], *LARGEST_MARK_RAMP)),
@@ -81,13 +102,15 @@ def detect_stain(processed: dict, segmentation: dict) -> dict:
         (0.12, _anomaly.ramp(stats["area_frac"], *COVERAGE_RAMP)),
     ])
 
-    # Colour confidence reduces false positives from crease shadows.
+    # Shadow rejection. A deep crease in a loose glove is long, narrow, dark and
+    # sharply bounded - the same geometry a stain stroke has.
     confidence = _anomaly.chromatic_confidence(stats)
     score = evidence * confidence
 
     result["detected"] = bool(score >= DECISION_THRESHOLD)
     result["detection_score"] = round(float(score), 4)
-    result["bounding_box"] = _anomaly.union_bbox(marks)
+    result["bounding_box"] = _anomaly.dominant_bbox(
+        _anomaly.localisation_blobs(marks), stats["equivalent_radius"])
     result["mask"] = stain_mask
     result["measurements"] = {
         "mark_count": int(stats["count"]),
