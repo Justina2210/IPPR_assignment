@@ -1,3 +1,0 @@
-glove_area=409284
-cuff_detected=False
-cuff_y=None

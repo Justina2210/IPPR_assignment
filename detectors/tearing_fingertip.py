@@ -181,7 +181,9 @@ MAX_EROSION_PX = 30
 # Recall on the target category is what evaluate.py actually scores
 # (see tearing.py's docstring - no true negatives are tested against a
 # detector in the real pipeline), so the plain OR is kept.
+# TUNED-BY-EYE on the 68-image dataset
 MIN_COLOUR_DISTANCE = 22.0        # LAB a/b distance
+# TUNED-BY-EYE on the 68-image dataset
 MIN_LIGHTNESS_DISTANCE = 28.0     # LAB L distance
 
 # ROI-area ratio at/above which the score saturates to 1.0. Measured
@@ -192,6 +194,7 @@ MIN_LIGHTNESS_DISTANCE = 28.0     # LAB L distance
 # MIN_HOLE_AREA_RATIO/MIN_EDGE_SUPPORT_PX candidate-stage gates ever
 # were, so dropping those in favour of composite ranking (see PROBLEM 1
 # in the module docstring) didn't loosen anything at the final decision.
+# TUNED-BY-EYE on the 68-image dataset
 STRONG_HOLE_AREA_RATIO = 0.50     # 50% of the fingertip ROI area
 
 CANNY_LOW, CANNY_HIGH = 50, 150
@@ -232,7 +235,25 @@ _RING_KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (RING_KERNEL_PX, RIN
 # dataset's 6 known images, the translucent-latex image's largest
 # candidate ratio (0.26) sits far below every other image's (0.45-0.72)
 # - this cap sits in that gap with margin on both sides.
+# TUNED-BY-EYE on the 68-image dataset
 TRANSLUCENT_MAX_RATIO_CAP = 0.30
+
+# Chroma-only (a/b, no lightness) floor a candidate blob's mean colour
+# deviation must clear to be trusted in area-ratio ranking mode. Fixes
+# a failure mode distinct from translucency: on knit cotton, a
+# fingertip's rounded surface catches a specular highlight that is
+# large in raw pixel area and can even carry sharp Canny edges (the
+# knit's own ribbing), but is almost pure LIGHTNESS deviation with
+# near-zero chroma shift - unlike a real tear, which exposes skin tone
+# and is genuinely chroma-different from the glove material, not just
+# brighter. Measured on this dataset: every genuine tearing_fingertip
+# candidate's blob (across all 6 known images) had mean chroma
+# deviation >=5.7, while the false, highlight-driven blobs that used to
+# win by raw area on a since-fixed cotton image stayed <=3.3 - this
+# floor sits in that gap with margin on both sides. Only gates the
+# area-ratio ranking path; composite mode (below) already ranks on
+# boundary character rather than raw area.
+MIN_CHROMA_FOR_AREA_RANKING = 4.5   # TUNED-BY-EYE on the 68-image dataset
 
 # --- Blob merging / box quality ---
 
@@ -436,28 +457,33 @@ def _finalize_box(x, y, w, h, glove_bounds, min_dim):
     return int(round(x0)), int(round(y0)), max(1, int(round(x1 - x0))), max(1, int(round(y1 - y0)))
 
 
-def _candidate_signals(tight_mask, full_lab_dist, grad_mag, dilated_edges):
+def _candidate_signals(tight_mask, full_lab_dist, ab_distance, grad_mag, dilated_edges):
     """
-    The three signals used to rank candidate fingertip blobs (see
-    module docstring, PROBLEM 1): how strongly the blob deviates from
-    the glove's own material colour, how much Canny edge support its
-    boundary carries, and how sharp the local grey-level gradient is
-    right at that boundary. All three are measured on a thin ring
-    around the blob rather than the blob's interior, since it's the
-    BOUNDARY character (sharp torn edge vs. gradual translucency fade)
-    that's diagnostic - the interior of a large translucent patch can
-    look just as "deviated" on average as a real tear's interior.
+    The signals used to rank candidate fingertip blobs (see module
+    docstring, PROBLEM 1): how strongly the blob deviates from the
+    glove's own material colour (both the full LAB magnitude used by
+    composite ranking, and a chroma-only figure used to gate area-ratio
+    ranking - see MIN_CHROMA_FOR_AREA_RANKING), how much Canny edge
+    support its boundary carries, and how sharp the local grey-level
+    gradient is right at that boundary. The edge/sharpness signals are
+    measured on a thin ring around the blob rather than the blob's
+    interior, since it's the BOUNDARY character (sharp torn edge vs.
+    gradual translucency fade) that's diagnostic - the interior of a
+    large translucent patch can look just as "deviated" on average as a
+    real tear's interior.
 
     Returns
     -------
     dict
-        {"blob_area", "deviation_strength", "edge_density", "sharpness"}
+        {"blob_area", "deviation_strength", "chroma_strength",
+         "edge_density", "sharpness"}
     """
     blob_area = cv2.countNonZero(tight_mask)
     ring = cv2.subtract(cv2.dilate(tight_mask, _RING_KERNEL), cv2.erode(tight_mask, _RING_KERNEL))
     ring_area = cv2.countNonZero(ring)
 
     deviation_strength = float(full_lab_dist[tight_mask > 0].mean()) if blob_area > 0 else 0.0
+    chroma_strength = float(ab_distance[tight_mask > 0].mean()) if blob_area > 0 else 0.0
     if ring_area > 0:
         edge_density = cv2.countNonZero(cv2.bitwise_and(ring, dilated_edges)) / ring_area
         sharpness = float(grad_mag[ring > 0].mean())
@@ -468,6 +494,7 @@ def _candidate_signals(tight_mask, full_lab_dist, grad_mag, dilated_edges):
     return {
         "blob_area": blob_area,
         "deviation_strength": deviation_strength,
+        "chroma_strength": chroma_strength,
         "edge_density": edge_density,
         "sharpness": sharpness,
     }
@@ -604,7 +631,7 @@ def detect_tearing_fingertip(processed, segmentation):
         tight_mask = np.zeros_like(glove_mask)
         cv2.drawContours(tight_mask, [blob], -1, 255, thickness=cv2.FILLED)
 
-        signals = _candidate_signals(tight_mask, full_lab_dist, grad_mag, dilated_edges)
+        signals = _candidate_signals(tight_mask, full_lab_dist, ab_distance, grad_mag, dilated_edges)
         if signals["blob_area"] < MIN_CANDIDATE_AREA_PX:
             continue
 
@@ -632,6 +659,29 @@ def detect_tearing_fingertip(processed, segmentation):
     # happened to land on the right finger on two of this dataset's
     # borderline images, where two fingers show comparably strong
     # anomaly area and raw ratio alone doesn't cleanly separate them).
+    #
+    # Tried and dropped: flooring the final detection_score at this
+    # branch's composite value once it wins, so a correctly-localised
+    # but visually subtle translucent tear (this dataset's
+    # latex_tearing_fingertip_1 - composite ranking already picks the
+    # right finger here, it's the confirmed-detected outcome that's
+    # missing) doesn't score near-zero. Measured against the full FP
+    # sweep, that raised tearing_fingertip's false-positive rate from
+    # 36/62 to 59/62 - composite ranking always produces SOME winner
+    # with a comparatively high composite value on almost every image
+    # (it's a within-image relative ranking, not absolute evidence of a
+    # real tear), so flooring the score on it fired on nearly every
+    # other defect category too. A stricter version gated on absolute
+    # (not relative) chroma/edge/sharpness floors was tried next and
+    # still fired on 28 of the 62 sweep images - ordinary dirty/
+    # discoloration/plastic_contamination fingertips routinely produce
+    # a STRONGER absolute colour+edge signal than this one subtle tear.
+    # There is no signal in this candidate set that separates that
+    # image's true tear from the sweep's false candidates at a
+    # confidence high enough to detect it without also detecting a
+    # third of the other categories, so its score is left as pure
+    # area-ratio like every other image, and it stays correctly
+    # localised but below DETECTION_SCORE_THRESHOLD.
     if max(c["ratio"] for c in candidates) < TRANSLUCENT_MAX_RATIO_CAP:
         strength_n = _normalize([c["signals"]["deviation_strength"] for c in candidates])
         edge_n = _normalize([c["signals"]["edge_density"] for c in candidates])
@@ -640,7 +690,24 @@ def detect_tearing_fingertip(processed, segmentation):
             c["composite"] = (s + e + sh) / 3.0
         winner = max(candidates, key=lambda c: c["composite"])
     else:
-        winner = max(candidates, key=lambda c: c["score"])
+        # PROBLEM 2 (knit-material highlight false positive): a
+        # fingertip's rounded surface can catch a specular highlight
+        # that is large in raw area - sometimes larger than a real
+        # tear's own exposed-skin patch - but is almost pure lightness
+        # deviation, not a genuine colour/chroma difference from the
+        # glove material. Ranking by raw area alone (as below) let such
+        # a highlight outscore the real tear on a cotton image in this
+        # dataset. Restricting the pool to candidates whose blob is
+        # also chroma-anomalous (see MIN_CHROMA_FOR_AREA_RANKING) before
+        # ranking by area removes the highlight-only blobs without
+        # touching this branch's behaviour on every other image, where
+        # the true candidate was already comfortably chroma-anomalous
+        # too. Falls back to the full candidate pool if the filter would
+        # otherwise leave nothing to rank (keeps prior behaviour rather
+        # than ever returning "no candidates" because of this filter).
+        strong_chroma = [c for c in candidates if c["signals"]["chroma_strength"] >= MIN_CHROMA_FOR_AREA_RANKING]
+        ranking_pool = strong_chroma if strong_chroma else candidates
+        winner = max(ranking_pool, key=lambda c: c["score"])
     finger_index = winner["finger_index"]
     tight_mask = winner["tight_mask"]
     roi_mask = winner["roi_mask"]
