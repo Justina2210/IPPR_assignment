@@ -30,6 +30,7 @@ was not used anywhere here - every result on screen comes from the
 real Python pipeline above.
 """
 
+import csv
 import io
 import os
 import time
@@ -796,3 +797,368 @@ with st.expander("Accuracy evaluation (full dataset)", expanded=False):
             "Download CSV", df.to_csv(index=False).encode("utf-8"),
             file_name="accuracy_evaluation.csv", mime="text/csv", use_container_width=True,
         )
+
+
+# ============================================================
+# RECOGNITION EVALUATION (full dataset)
+# ============================================================
+# Formerly the standalone evaluate_recognition.py script. Answers a
+# different question than the accuracy table above: given an
+# unlabelled image, does the highest-scoring detector name the right
+# defect? (The accuracy table asks instead whether each detector fires
+# correctly on its own images - a detector can pass that test and
+# still lose the naming contest to a sibling detector's higher score.)
+
+RECOGNITION_CSV_NAME = "recognition_results.csv"
+NO_PREDICTION = "(none)"
+
+# Defect grouping, carried over from evaluate_recognition.py: every
+# name here must match a datasets/ folder name and a
+# DETECTOR_REGISTRY key.
+GEOMETRY_DEFECTS = {
+    "tearing", "tearing_fingertip", "finger_not_enough", "touching",
+    "damaged_by_fold", "incomplete_beading", "oversize",
+}
+COLOUR_DEFECTS = {
+    "dirty", "stain", "spotting", "discoloration", "plastic_contamination",
+}
+
+
+def _defect_group(defect_name):
+    """geometry / colour / unclassified, for reading confusions."""
+    if defect_name in GEOMETRY_DEFECTS:
+        return "geometry"
+    if defect_name in COLOUR_DEFECTS:
+        return "colour"
+    return "unclassified"
+
+
+def _score_all_detectors(processed, segmentation, detectors):
+    """
+    Run every detector on one already-preprocessed image. A detector
+    that raises is recorded at score 0.0 rather than dropped, so one
+    broken detector cannot silently shrink another image's candidate
+    list and hand the win to a detector that would otherwise have lost.
+    """
+    scores, errors = {}, {}
+    for name in detectors:
+        detector_func = load_detector(name)
+        try:
+            result = detector_func(processed, segmentation)
+            evaluate.validate_result(result)
+            scores[name] = float(result["detection_score"])
+        except Exception as exc:
+            scores[name] = 0.0
+            errors[name] = f"{type(exc).__name__}: {exc}"
+    return scores, errors
+
+
+def _evaluate_one_recognition(material, true_defect, image_path, processed, segmentation, detectors):
+    """
+    Full recognition record for one image. predicted is the
+    highest-scoring detector, but only if it clears DETECTION_THRESHOLD
+    - otherwise the system has abstained and predicted is
+    NO_PREDICTION. correct_rank is where the correct detector placed
+    once all scores are sorted high to low (1 = got it right).
+    """
+    record = {
+        "material": material, "true_defect": true_defect, "image_path": image_path,
+        "status": "success", "predicted": NO_PREDICTION, "top1_correct": False,
+        "correct_score": None, "correct_fired": False, "correct_rank": None,
+        "winner_score": None, "margin": None, "scores": {}, "errors": {},
+    }
+
+    if processed is None or segmentation is None:
+        record["status"] = "segmentation_failure"
+        return record
+    if segmentation["glove_area"] < MIN_GLOVE_AREA:
+        record["status"] = "segmentation_failure"
+        return record
+
+    scores, errors = _score_all_detectors(processed, segmentation, detectors)
+    record["scores"], record["errors"] = scores, errors
+
+    ranked = sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
+    winner_name, winner_score = ranked[0]
+    record["winner_score"] = winner_score
+    if winner_score >= evaluate.DETECTION_THRESHOLD:
+        record["predicted"] = winner_name
+
+    if true_defect in scores:
+        record["correct_score"] = scores[true_defect]
+        record["correct_fired"] = scores[true_defect] >= evaluate.DETECTION_THRESHOLD
+        record["correct_rank"] = [name for name, _ in ranked].index(true_defect) + 1
+
+    record["top1_correct"] = record["predicted"] == true_defect
+
+    # How far ahead the winner was - a tiny margin means the ranking is
+    # fragile even when it happens to be right.
+    if len(ranked) > 1:
+        record["margin"] = round(ranked[0][1] - ranked[1][1], 3)
+
+    return record
+
+
+def run_recognition_evaluation(progress_bar):
+    """
+    Run every implemented detector on every image and ask which one
+    scores highest. Preprocessing + segmentation is computed once per
+    image and reused across every detector, same caching approach as
+    run_full_evaluation above.
+    """
+    images = list(evaluate.discover_images())
+    total_images = len(images)
+    detectors, _ = implemented_detectors()
+
+    cache = {}
+    for i, (material, defect_folder, image_path) in enumerate(images):
+        try:
+            image = load_image(image_path)
+            processed = preprocess_image(image)
+            segmentation = segment_glove(processed)
+        except Exception:
+            processed, segmentation = None, None
+        cache[image_path] = (processed, segmentation)
+        progress_bar.progress(
+            (i + 1) / total_images * 0.5,
+            text=f"Preprocessing {i + 1}/{total_images}: {os.path.basename(image_path)}",
+        )
+
+    records = []
+    for i, (material, defect_folder, image_path) in enumerate(images):
+        processed, segmentation = cache[image_path]
+        record = _evaluate_one_recognition(material, defect_folder, image_path, processed, segmentation, detectors)
+        records.append(record)
+        progress_bar.progress(
+            0.5 + (i + 1) / total_images * 0.5,
+            text=f"Scoring {i + 1}/{total_images}: {os.path.basename(image_path)}",
+        )
+
+    progress_bar.progress(1.0, text=f"Done - {total_images} images x {len(detectors)} detectors")
+    return records, detectors
+
+
+def _recognition_csv_bytes(records, detectors):
+    buf = io.StringIO()
+    fieldnames = [
+        "material", "true_defect", "image_path", "status",
+        "predicted", "top1_correct", "correct_score", "correct_fired",
+        "correct_rank", "winner_score", "margin",
+    ] + [f"score_{name}" for name in detectors]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames)
+    writer.writeheader()
+    for r in records:
+        row = {k: r.get(k) for k in fieldnames if not k.startswith("score_")}
+        for name in detectors:
+            row[f"score_{name}"] = r["scores"].get(name)
+        writer.writerow(row)
+    return buf.getvalue().encode("utf-8")
+
+
+with st.expander("Recognition evaluation (full dataset)", expanded=False):
+    st.caption(
+        "Different question from the accuracy table above: given an unlabelled "
+        "image, does the highest-scoring detector name the right defect? This is "
+        "what the GUI's own single-image mode has to answer in auto-detect use, "
+        "where no folder label is available to pick a detector for it."
+    )
+
+    if st.button("Run recognition evaluation", use_container_width=True):
+        progress_bar = st.progress(0.0, text="Starting...")
+        records, rec_detectors = run_recognition_evaluation(progress_bar)
+        st.session_state["recognition_records"] = records
+        st.session_state["recognition_detectors"] = rec_detectors
+
+    recognition_records = st.session_state.get("recognition_records")
+    recognition_detectors = st.session_state.get("recognition_detectors")
+
+    if recognition_records:
+        usable = [r for r in recognition_records if r["status"] == "success"]
+        skipped = len(recognition_records) - len(usable)
+        correct = [r for r in usable if r["top1_correct"]]
+        abstained = [r for r in usable if r["predicted"] == NO_PREDICTION]
+        fired_but_lost = [r for r in usable if r["correct_fired"] and not r["top1_correct"]]
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Top-1 accuracy", f"{len(correct)}/{len(usable)}" if usable else "n/a")
+        c2.metric("Skipped (segmentation)", skipped)
+        c3.metric("No defect named", len(abstained))
+        c4.metric("Fired but out-scored", len(fired_but_lost))
+
+        st.markdown("**Top-1 accuracy by true defect**")
+        defect_rows = []
+        for defect in sorted(set(r["true_defect"] for r in usable)):
+            subset = [r for r in usable if r["true_defect"] == defect]
+            wins = sum(1 for r in subset if r["top1_correct"])
+            fired = sum(1 for r in subset if r["correct_fired"])
+            ranks = [r["correct_rank"] for r in subset if r["correct_rank"]]
+            mean_rank = sum(ranks) / len(ranks) if ranks else None
+            defect_rows.append({
+                "Defect": defect.replace("_", " "),
+                "Top-1": f"{wins}/{len(subset)}",
+                "Fired": f"{fired}/{len(subset)}",
+                "Mean rank": f"{mean_rank:.1f}" if mean_rank is not None else "n/a",
+            })
+        st.dataframe(pd.DataFrame(defect_rows), use_container_width=True, hide_index=True)
+
+        st.markdown("**Top-1 accuracy by material**")
+        material_rows = []
+        for material in sorted(set(r["material"] for r in usable)):
+            subset = [r for r in usable if r["material"] == material]
+            wins = sum(1 for r in subset if r["top1_correct"])
+            material_rows.append({
+                "Material": material,
+                "Top-1": f"{wins}/{len(subset)}",
+                "Accuracy": f"{wins / len(subset):.0%}" if subset else "n/a",
+            })
+        st.dataframe(pd.DataFrame(material_rows), use_container_width=True, hide_index=True)
+
+        st.markdown("**Confusion: what the system said instead**")
+        confusion_rows = []
+        for defect in sorted(set(r["true_defect"] for r in usable)):
+            subset = [r for r in usable if r["true_defect"] == defect]
+            counts = {}
+            for r in subset:
+                counts[r["predicted"]] = counts.get(r["predicted"], 0) + 1
+            wins = counts.get(defect, 0)
+            wrong = sorted(
+                ((name, n) for name, n in counts.items() if name != defect),
+                key=lambda pair: pair[1], reverse=True,
+            )
+            if wrong:
+                parts = []
+                for name, n in wrong:
+                    label = "nothing named" if name == NO_PREDICTION else name
+                    note = ""
+                    if _defect_group(defect) == "geometry" and _defect_group(name) == "colour":
+                        note = " (colour won on geometry defect)"
+                    parts.append(f"{n}x {label}{note}")
+                confused_as = "; ".join(parts)
+            else:
+                confused_as = "no confusions"
+            confusion_rows.append({
+                "True defect": defect.replace("_", " "),
+                "Correct": f"{wins}/{len(subset)}",
+                "Confused as": confused_as,
+            })
+        st.dataframe(pd.DataFrame(confusion_rows), use_container_width=True, hide_index=True)
+
+        st.markdown("**Error types by defect group**")
+        error_records = [r for r in usable if not r["top1_correct"] and r["predicted"] != NO_PREDICTION]
+        buckets = {}
+        for r in error_records:
+            key = (_defect_group(r["true_defect"]), _defect_group(r["predicted"]))
+            buckets[key] = buckets.get(key, 0) + 1
+        if buckets:
+            group_rows = []
+            for (true_group, pred_group), n in sorted(buckets.items(), key=lambda pair: pair[1], reverse=True):
+                if true_group == "geometry" and pred_group == "colour":
+                    reading = "hard error, no colour anomaly should exist"
+                elif true_group == "colour" and pred_group == "colour":
+                    reading = "soft error, real anomaly, wrong label"
+                elif true_group == pred_group:
+                    reading = "same group, wrong label"
+                else:
+                    reading = "cross-group"
+                group_rows.append({"True group": true_group, "Said group": pred_group, "Count": n, "Reading": reading})
+            st.dataframe(pd.DataFrame(group_rows), use_container_width=True, hide_index=True)
+        else:
+            st.caption("No wrong-label errors.")
+
+        st.markdown("**Narrowest correct wins** (right today, fragile tomorrow)")
+        tight = sorted(
+            [r for r in usable if r["top1_correct"] and r["margin"] is not None],
+            key=lambda r: r["margin"],
+        )[:10]
+        if tight:
+            fragile_rows = [{
+                "Margin": f"{r['margin']:.3f}",
+                "Image": f"{r['material']}/{r['true_defect']}/{os.path.basename(r['image_path'])}",
+            } for r in tight]
+            st.dataframe(pd.DataFrame(fragile_rows), use_container_width=True, hide_index=True)
+        else:
+            st.caption("None.")
+
+        st.download_button(
+            "Download CSV", _recognition_csv_bytes(recognition_records, recognition_detectors),
+            file_name=RECOGNITION_CSV_NAME, mime="text/csv", use_container_width=True,
+        )
+
+
+# ============================================================
+# PREPROCESSING & SEGMENTATION PREVIEWS (full dataset)
+# ============================================================
+# Formerly the standalone test_preprocessing.py / test_segmentation.py
+# scripts - folded in here so preview generation happens from the GUI
+# instead of a separate CLI run. preprocess_image() is computed once
+# per image and reused for both preview sets, instead of running it
+# twice the way the two original scripts did independently.
+
+PREPROCESSING_PREVIEW_ROOT = os.path.join("outputs", "preprocessing_preview")
+SEGMENTATION_PREVIEW_ROOT = os.path.join("outputs", "segmentation_preview")
+
+
+def generate_previews(progress_bar):
+    images = list(evaluate.discover_images())
+    total = len(images)
+    failures = []
+
+    for i, (material, defect_folder, image_path) in enumerate(images, start=1):
+        relative_path = os.path.relpath(image_path, DATASET_ROOT)
+        rel_dir = os.path.dirname(relative_path)
+        base_name = os.path.splitext(os.path.basename(relative_path))[0]
+
+        try:
+            image = load_image(image_path)
+            processed = preprocess_image(image)
+
+            preproc_dir = os.path.join(PREPROCESSING_PREVIEW_ROOT, rel_dir)
+            os.makedirs(preproc_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(preproc_dir, f"{base_name}_original.jpg"), processed["original"])
+            cv2.imwrite(os.path.join(preproc_dir, f"{base_name}_denoised.jpg"), processed["denoised"])
+            cv2.imwrite(os.path.join(preproc_dir, f"{base_name}_gray.jpg"), processed["gray"])
+            cv2.imwrite(os.path.join(preproc_dir, f"{base_name}_gray_enhanced.jpg"), processed["gray_enhanced"])
+            cv2.imwrite(os.path.join(preproc_dir, f"{base_name}_hsv.jpg"), cv2.cvtColor(processed["hsv"], cv2.COLOR_BGR2RGB))
+            cv2.imwrite(os.path.join(preproc_dir, f"{base_name}_lab.jpg"), cv2.cvtColor(processed["lab"], cv2.COLOR_BGR2RGB))
+
+            segmentation = segment_glove(processed)
+
+            seg_dir = os.path.join(SEGMENTATION_PREVIEW_ROOT, rel_dir)
+            os.makedirs(seg_dir, exist_ok=True)
+            with open(os.path.join(seg_dir, f"{base_name}_segmentation_result.txt"), "w", encoding="utf-8") as f:
+                f.write(f"glove_area={segmentation['glove_area']}\n")
+                f.write(f"cuff_detected={segmentation['cuff_detected']}\n")
+                f.write(f"cuff_y={segmentation['cuff_y']}\n")
+            cv2.imwrite(os.path.join(seg_dir, f"{base_name}_raw_mask.png"), segmentation["raw_mask"])
+            cv2.imwrite(os.path.join(seg_dir, f"{base_name}_glove_mask.png"), segmentation["glove_mask"])
+        except Exception as exc:
+            failures.append((image_path, str(exc)))
+
+        progress_bar.progress(i / total, text=f"[{i}/{total}] {os.path.basename(image_path)}")
+
+    progress_bar.progress(1.0, text=f"Done - {total - len(failures)}/{total} images processed")
+    return total, failures
+
+
+with st.expander("Preprocessing & segmentation previews (full dataset)", expanded=False):
+    st.caption(
+        f"Writes per-image preprocessing stages to `{PREPROCESSING_PREVIEW_ROOT}/` and "
+        f"segmentation results (glove mask, raw mask, glove_area/cuff info) to "
+        f"`{SEGMENTATION_PREVIEW_ROOT}/`, for every image in `{DATASET_ROOT}/`."
+    )
+
+    if st.button("Generate previews", use_container_width=True):
+        progress_bar = st.progress(0.0, text="Starting...")
+        total, failures = generate_previews(progress_bar)
+        st.session_state["preview_gen_result"] = (total, failures)
+
+    preview_result = st.session_state.get("preview_gen_result")
+    if preview_result:
+        total, failures = preview_result
+        if failures:
+            st.warning(f"{len(failures)} of {total} images failed.")
+            with st.expander("Failures"):
+                for path, err in failures:
+                    st.markdown(f"- `{path}`: {err}")
+        else:
+            st.success(f"All {total} images processed successfully.")
