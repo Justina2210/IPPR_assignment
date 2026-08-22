@@ -1,0 +1,2854 @@
+{
+  "format_version": 1,
+  "record_count": 68,
+  "results": [
+    {
+      "image_path": "datasets\\cotton\\damaged_by_fold\\cotton_damaged_by_fold_1.png",
+      "defect_name": "damaged_by_fold",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.830203930000893,
+      "algorithm": "Adaptive masked-palm edge analysis for a long fold ridge, confirmed by line continuity, parallel fold-band support, local contrast and geometry",
+      "bounding_box": [
+        212,
+        770,
+        220,
+        50
+      ],
+      "measurements": {
+        "area_pct": 3.627,
+        "canny_low": 78,
+        "canny_high": 142,
+        "palm_edge_density": 0.2114,
+        "candidate_count": 35,
+        "textured_glove": true,
+        "length_ratio": 0.4032,
+        "fold_angle_deg": 2.86,
+        "edge_continuity": 1.0,
+        "paired_edge_support": 0.96,
+        "side_material_support": 1.0,
+        "local_contrast": 0.1991,
+        "local_contrast_gray": 21.5,
+        "fold_relative_y": 0.7614,
+        "side_fold": false,
+        "vertical_fold": false,
+        "line_top_ratio": 0.7552,
+        "line_bottom_ratio": 0.7676,
+        "centre_x_ratio": 0.5817,
+        "textured_candidate_rank": 1.2012,
+        "lower_position_score": 1.0,
+        "vertical_preference": 0.0,
+        "localisation_shift_x_px": 0,
+        "localisation_shift_y_px": -33
+      },
+      "glove_area": 237795,
+      "processing_time_ms": 546.3621616363525,
+      "overlay_path": "outputs\\overlays\\cotton_damaged_by_fold_cotton_damaged_by_fold_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_damaged_by_fold_cotton_damaged_by_fold_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\damaged_by_fold\\cotton_damaged_by_fold_2.png",
+      "defect_name": "damaged_by_fold",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7046085935788883,
+      "algorithm": "Adaptive masked-palm edge analysis for a long fold ridge, confirmed by line continuity, parallel fold-band support, local contrast and geometry",
+      "bounding_box": [
+        339,
+        664,
+        56,
+        220
+      ],
+      "measurements": {
+        "area_pct": 4.618,
+        "canny_low": 70,
+        "canny_high": 126,
+        "palm_edge_density": 0.2226,
+        "candidate_count": 36,
+        "textured_glove": true,
+        "length_ratio": 0.2648,
+        "fold_angle_deg": 85.82,
+        "edge_continuity": 1.0,
+        "paired_edge_support": 1.0,
+        "side_material_support": 1.0,
+        "local_contrast": 0.16,
+        "local_contrast_gray": 16.0,
+        "fold_relative_y": 0.6632,
+        "side_fold": false,
+        "vertical_fold": true,
+        "line_top_ratio": 0.5312,
+        "line_bottom_ratio": 0.7953,
+        "centre_x_ratio": 0.5797,
+        "textured_candidate_rank": 1.2572,
+        "lower_position_score": 0.4622,
+        "vertical_preference": 0.32,
+        "localisation_shift_x_px": 24,
+        "localisation_shift_y_px": 0
+      },
+      "glove_area": 195769,
+      "processing_time_ms": 409.0771675109863,
+      "overlay_path": "outputs\\overlays\\cotton_damaged_by_fold_cotton_damaged_by_fold_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_damaged_by_fold_cotton_damaged_by_fold_2_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\dirty\\cotton_dirty_1.jpeg",
+      "defect_name": "dirty",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7027,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component analysis + soiling-halo (surround darkening) measurement",
+      "bounding_box": [
+        229,
+        381,
+        476,
+        619
+      ],
+      "measurements": {
+        "fragment_count": 19,
+        "area_pct": 7.299,
+        "surrounding_darkening": 0.0477,
+        "isolation_ratio": 4.1,
+        "cluster_fill": 0.345,
+        "mean_darkening": 0.1994,
+        "median_fragment_area_px": 81.0,
+        "chromatic_fraction": 0.235,
+        "shape_evidence": 0.7027,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 417819,
+      "processing_time_ms": 227.28848457336426,
+      "overlay_path": "outputs\\overlays\\cotton_dirty_cotton_dirty_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_dirty_cotton_dirty_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\dirty\\cotton_dirty_2.jpeg",
+      "defect_name": "dirty",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8523,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component analysis + soiling-halo (surround darkening) measurement",
+      "bounding_box": [
+        65,
+        276,
+        469,
+        724
+      ],
+      "measurements": {
+        "fragment_count": 32,
+        "area_pct": 13.982,
+        "surrounding_darkening": 0.052,
+        "isolation_ratio": 3.56,
+        "cluster_fill": 0.396,
+        "mean_darkening": 0.1884,
+        "median_fragment_area_px": 114.5,
+        "chromatic_fraction": 0.157,
+        "shape_evidence": 0.9308,
+        "chromatic_confidence": 0.916
+      },
+      "glove_area": 385162,
+      "processing_time_ms": 213.69147300720215,
+      "overlay_path": "outputs\\overlays\\cotton_dirty_cotton_dirty_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_dirty_cotton_dirty_2_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\dirty\\cotton_dirty_3.jpeg",
+      "defect_name": "dirty",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8965,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component analysis + soiling-halo (surround darkening) measurement",
+      "bounding_box": [
+        101,
+        125,
+        649,
+        875
+      ],
+      "measurements": {
+        "fragment_count": 45,
+        "area_pct": 19.662,
+        "surrounding_darkening": 0.0642,
+        "isolation_ratio": 3.62,
+        "cluster_fill": 0.341,
+        "mean_darkening": 0.2357,
+        "median_fragment_area_px": 136.0,
+        "chromatic_fraction": 0.247,
+        "shape_evidence": 0.8965,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 461164,
+      "processing_time_ms": 263.73863220214844,
+      "overlay_path": "outputs\\overlays\\cotton_dirty_cotton_dirty_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_dirty_cotton_dirty_3_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\finger_not_enough\\cotton_finger_not_enough_1.jpg",
+      "defect_name": "finger_not_enough",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.75,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks against a hard prior of 4 main fingers + 1 thumb; the thumb is identified separately (by length ratio, or a column-top-height bulge search) so it never masks a genuinely missing main finger; when fewer than 4 main fingers are found, the missing one is localised to an abnormally wide interior gap when one clearly stands out, else to whichever edge is both wide enough and free of real material (no bulge) - catching an edge-missing finger that widens no interior gap at all; when all 4 main fingers are found, falls back to convexity-defect valley/slot analysis to catch a finger that's present but short of its neighbours' length",
+      "bounding_box": [
+        343,
+        198,
+        99,
+        67
+      ],
+      "measurements": {
+        "area_pct": null,
+        "fingers_found": 4,
+        "main_fingers_found": 3,
+        "thumb_confirmed": true,
+        "gap_type": "interior",
+        "gap_ratio": 1.138,
+        "localization": "gap"
+      },
+      "glove_area": 308934,
+      "processing_time_ms": 112.24102973937988,
+      "overlay_path": "outputs\\overlays\\cotton_finger_not_enough_cotton_finger_not_enough_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_finger_not_enough_cotton_finger_not_enough_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\finger_not_enough\\cotton_finger_not_enough_2.jpg",
+      "defect_name": "finger_not_enough",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.75,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks against a hard prior of 4 main fingers + 1 thumb; the thumb is identified separately (by length ratio, or a column-top-height bulge search) so it never masks a genuinely missing main finger; when fewer than 4 main fingers are found, the missing one is localised to an abnormally wide interior gap when one clearly stands out, else to whichever edge is both wide enough and free of real material (no bulge) - catching an edge-missing finger that widens no interior gap at all; when all 4 main fingers are found, falls back to convexity-defect valley/slot analysis to catch a finger that's present but short of its neighbours' length",
+      "bounding_box": [
+        155,
+        209,
+        154,
+        182
+      ],
+      "measurements": {
+        "area_pct": null,
+        "fingers_found": 3,
+        "main_fingers_found": 3,
+        "thumb_confirmed": false,
+        "gap_type": "edge_left",
+        "gap_ratio": 2.264,
+        "localization": "gap"
+      },
+      "glove_area": 282451,
+      "processing_time_ms": 78.19747924804688,
+      "overlay_path": "outputs\\overlays\\cotton_finger_not_enough_cotton_finger_not_enough_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_finger_not_enough_cotton_finger_not_enough_2_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\incomplete_beading\\cotton_incomplete_beading_1.png",
+      "defect_name": "incomplete_beading",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7038089069610574,
+      "algorithm": "Robust lower glove-mask cuff profile: detect deep/wide missing bead notches and abnormal edge roughness relative to a fitted cuff baseline",
+      "bounding_box": [
+        154,
+        730,
+        252,
+        170
+      ],
+      "measurements": {
+        "area_pct": 2.152,
+        "notch_depth_ratio": 0.0777,
+        "notch_span_ratio": 0.2227,
+        "abnormal_area_ratio": 0.0209,
+        "cuff_roughness_ratio": 0.00148,
+        "shallow_abnormal_coverage": 0.4811,
+        "cuff_p90_depth_ratio": 0.0749,
+        "shallow_wide_case": true,
+        "deep_split_case": false,
+        "cuff_profile_columns": 264,
+        "candidate_notches": 2,
+        "baseline_slope": 0.06413,
+        "baseline_intercept": 869.42
+      },
+      "glove_area": 173357,
+      "processing_time_ms": 75.7741928100586,
+      "overlay_path": "outputs\\overlays\\cotton_incomplete_beading_cotton_incomplete_beading_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_incomplete_beading_cotton_incomplete_beading_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\oversize\\cotton_oversize_1.jpeg",
+      "defect_name": "oversize",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.5679045403551416,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence",
+      "bounding_box": [
+        187,
+        654,
+        337,
+        346
+      ],
+      "measurements": {
+        "area_pct": 2.62,
+        "global_defect": true,
+        "mode": "cotton",
+        "visualization_type": "cuff_geometry_plus_measurement_lines",
+        "evidence_description": "Palm/cuff width measurements plus lower-cuff silhouette",
+        "glove_bounding_box": [
+          113,
+          140,
+          506,
+          860
+        ],
+        "palm_measurement_line": [
+          205,
+          656,
+          523,
+          656
+        ],
+        "cuff_measurement_line": [
+          222,
+          862,
+          496,
+          862
+        ],
+        "palm_measurement_width_px": 319,
+        "cuff_measurement_width_px": 275,
+        "cuff_palm_ratio": 0.8621,
+        "prototype_details": {
+          "panel_title": "Oversize Evidence",
+          "status": "Detected",
+          "confidence_percent": 56.8,
+          "material_mode": "cotton",
+          "evidence_type": "cuff_geometry",
+          "evidence_label": "Lower / Cuff Geometry",
+          "explanation": "Cotton knit texture naturally contains many edges and wrinkles, so oversize is assessed mainly from cuff fullness and global silhouette geometry instead of wrinkle texture.",
+          "display_metrics": [
+            {
+              "key": "palm_width_px",
+              "label": "Palm Width",
+              "value": 319,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_width_px",
+              "label": "Cuff Width",
+              "value": 275,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_palm_ratio",
+              "label": "Cuff / Palm Ratio",
+              "value": 0.862,
+              "unit": ""
+            },
+            {
+              "key": "solidity",
+              "label": "Silhouette Solidity",
+              "value": 0.727,
+              "unit": ""
+            },
+            {
+              "key": "silhouette_extent",
+              "label": "Silhouette Extent",
+              "value": 0.572,
+              "unit": ""
+            },
+            {
+              "key": "width_height_ratio",
+              "label": "Width / Height Ratio",
+              "value": 0.588,
+              "unit": ""
+            }
+          ],
+          "legend": [
+            {
+              "name": "Lower / cuff geometry",
+              "colour": "yellow"
+            },
+            {
+              "name": "Palm width",
+              "colour": "cyan"
+            },
+            {
+              "name": "Cuff width",
+              "colour": "orange"
+            },
+            {
+              "name": "Oversize evidence region",
+              "colour": "magenta"
+            }
+          ]
+        },
+        "median_gradient": 25.298,
+        "solidity": 0.7272,
+        "contour_roughness": 1.882,
+        "extent": 0.5716,
+        "width_height_ratio": 0.5884,
+        "cuff_ratio": 0.921,
+        "fold_density": 0.0,
+        "fold_score": 0.0,
+        "concavity_score": 0.764,
+        "cuff_fullness_score": 0.774,
+        "roughness_score": 0.96,
+        "spread_score": 0.0,
+        "bulky_extent_score": 0.135,
+        "base_geometry_fold_score": 0.568,
+        "fold_bulk_score": 0.0
+      },
+      "glove_area": 248734,
+      "processing_time_ms": 105.5917739868164,
+      "overlay_path": "outputs\\overlays\\cotton_oversize_cotton_oversize_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_oversize_cotton_oversize_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\oversize\\cotton_oversize_2.jpeg",
+      "defect_name": "oversize",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.5419523087645546,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence",
+      "bounding_box": [
+        82,
+        444,
+        499,
+        254
+      ],
+      "measurements": {
+        "area_pct": 3.8,
+        "global_defect": true,
+        "mode": "cotton",
+        "visualization_type": "cuff_geometry_plus_measurement_lines",
+        "evidence_description": "Palm/cuff width measurements plus lower-cuff silhouette",
+        "glove_bounding_box": [
+          76,
+          69,
+          543,
+          629
+        ],
+        "palm_measurement_line": [
+          82,
+          446,
+          580,
+          446
+        ],
+        "cuff_measurement_line": [
+          143,
+          597,
+          564,
+          597
+        ],
+        "palm_measurement_width_px": 485,
+        "cuff_measurement_width_px": 422,
+        "cuff_palm_ratio": 0.8701,
+        "prototype_details": {
+          "panel_title": "Oversize Evidence",
+          "status": "Detected",
+          "confidence_percent": 54.2,
+          "material_mode": "cotton",
+          "evidence_type": "cuff_geometry",
+          "evidence_label": "Lower / Cuff Geometry",
+          "explanation": "Cotton knit texture naturally contains many edges and wrinkles, so oversize is assessed mainly from cuff fullness and global silhouette geometry instead of wrinkle texture.",
+          "display_metrics": [
+            {
+              "key": "palm_width_px",
+              "label": "Palm Width",
+              "value": 485,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_width_px",
+              "label": "Cuff Width",
+              "value": 422,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_palm_ratio",
+              "label": "Cuff / Palm Ratio",
+              "value": 0.87,
+              "unit": ""
+            },
+            {
+              "key": "solidity",
+              "label": "Silhouette Solidity",
+              "value": 0.869,
+              "unit": ""
+            },
+            {
+              "key": "silhouette_extent",
+              "label": "Silhouette Extent",
+              "value": 0.695,
+              "unit": ""
+            },
+            {
+              "key": "width_height_ratio",
+              "label": "Width / Height Ratio",
+              "value": 0.863,
+              "unit": ""
+            }
+          ],
+          "legend": [
+            {
+              "name": "Lower / cuff geometry",
+              "colour": "yellow"
+            },
+            {
+              "name": "Palm width",
+              "colour": "cyan"
+            },
+            {
+              "name": "Cuff width",
+              "colour": "orange"
+            },
+            {
+              "name": "Oversize evidence region",
+              "colour": "magenta"
+            }
+          ]
+        },
+        "median_gradient": 32.249,
+        "solidity": 0.8695,
+        "contour_roughness": 1.7663,
+        "extent": 0.6952,
+        "width_height_ratio": 0.8633,
+        "cuff_ratio": 0.8359,
+        "fold_density": 0.0,
+        "fold_score": 0.0,
+        "concavity_score": 0.053,
+        "cuff_fullness_score": 0.531,
+        "roughness_score": 0.703,
+        "spread_score": 0.585,
+        "bulky_extent_score": 0.908,
+        "base_geometry_fold_score": 0.542,
+        "fold_bulk_score": 0.0
+      },
+      "glove_area": 237457,
+      "processing_time_ms": 115.27562141418457,
+      "overlay_path": "outputs\\overlays\\cotton_oversize_cotton_oversize_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_oversize_cotton_oversize_2_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\plastic_contamination\\cotton_plastic_1.jpeg",
+      "defect_name": "plastic_contamination",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9178291589690365,
+      "algorithm": "Material-adaptive texture/reflection evidence + local object completion",
+      "bounding_box": [
+        233,
+        595,
+        73,
+        96
+      ],
+      "measurements": {
+        "area_pct": 1.3,
+        "mode": "cotton",
+        "median_saturation": 12.0,
+        "median_gradient": 22.0,
+        "texture_mode": "smoothing",
+        "num_selected_windows": 199,
+        "peak_window_score": 0.918,
+        "refined": true,
+        "extent": 0.605,
+        "aspect_ratio": 1.315,
+        "mean_pixel_score": 0.775,
+        "num_regions": 199.0,
+        "minimum_heat_score": 0.78,
+        "cotton_v4_threshold": 0.55,
+        "cotton_v4_mean_score": 0.775
+      },
+      "glove_area": 326247,
+      "processing_time_ms": 333.3005905151367,
+      "overlay_path": "outputs\\overlays\\cotton_plastic_contamination_cotton_plastic_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_plastic_contamination_cotton_plastic_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\plastic_contamination\\cotton_plastic_2.jpeg",
+      "defect_name": "plastic_contamination",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9842732163112642,
+      "algorithm": "Material-adaptive texture/reflection evidence + local object completion",
+      "bounding_box": [
+        140,
+        676,
+        86,
+        63
+      ],
+      "measurements": {
+        "area_pct": 0.95,
+        "mode": "cotton",
+        "median_saturation": 11.0,
+        "median_gradient": 17.89,
+        "texture_mode": "smoothing",
+        "num_selected_windows": 133,
+        "peak_window_score": 0.984,
+        "refined": true,
+        "extent": 0.685,
+        "aspect_ratio": 1.365,
+        "mean_pixel_score": 0.765,
+        "num_regions": 133.0,
+        "minimum_heat_score": 0.787,
+        "cotton_v4_threshold": 0.567,
+        "cotton_v4_mean_score": 0.765
+      },
+      "glove_area": 391707,
+      "processing_time_ms": 356.555700302124,
+      "overlay_path": "outputs\\overlays\\cotton_plastic_contamination_cotton_plastic_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_plastic_contamination_cotton_plastic_2_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\plastic_contamination\\cotton_plastic_3.jpeg",
+      "defect_name": "plastic_contamination",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9167654438100814,
+      "algorithm": "Material-adaptive texture/reflection evidence + local object completion",
+      "bounding_box": [
+        482,
+        554,
+        65,
+        47
+      ],
+      "measurements": {
+        "area_pct": 0.49,
+        "mode": "cotton",
+        "median_saturation": 12.0,
+        "median_gradient": 32.31,
+        "texture_mode": "roughening",
+        "num_selected_windows": 31,
+        "peak_window_score": 0.917,
+        "refined": true,
+        "extent": 0.52,
+        "aspect_ratio": 1.383,
+        "mean_pixel_score": 0.724,
+        "num_regions": 31.0,
+        "minimum_heat_score": 0.78,
+        "cotton_v4_threshold": 0.55,
+        "cotton_v4_mean_score": 0.724
+      },
+      "glove_area": 324691,
+      "processing_time_ms": 412.9009246826172,
+      "overlay_path": "outputs\\overlays\\cotton_plastic_contamination_cotton_plastic_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_plastic_contamination_cotton_plastic_3_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\tearing\\cotton_tearing_1.jpg",
+      "defect_name": "tearing",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Largest connected LAB material-colour-deviation blob inside the eroded glove interior, cross-checked against Canny edges from gray_enhanced",
+      "bounding_box": [
+        134,
+        522,
+        302,
+        478
+      ],
+      "measurements": {
+        "area_pct": 11.491,
+        "hole_area_ratio": 0.10745
+      },
+      "glove_area": 175889,
+      "processing_time_ms": 87.02659606933594,
+      "overlay_path": "outputs\\overlays\\cotton_tearing_cotton_tearing_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_tearing_cotton_tearing_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\tearing_fingertip\\cotton_tearing_fingertip_1.jpg",
+      "defect_name": "tearing_fingertip",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks (convex protrusion + finger-length analysis); the torn finger itself is picked by ranking each finger's largest LAB material-colour-deviation blob (within its own tight ROI) by area ratio, unless every candidate's blob is still small relative to its ROI (a translucent material can show similar weak deviation on every fingertip), in which case ranking switches to a composite of boundary deviation strength, Canny edge density, and local gradient sharpness instead - a real tear has a sharp torn edge, translucency fades in gradually. For the winning finger only, the box/mask is then rebuilt from the full connected anomaly within a moderately dilated version of its ROI (closed to bridge small gaps), so it covers the tear's own full extent rather than a ROI-clipped fragment, then clipped to the glove silhouette and padded to a minimum size relative to the finger's own width",
+      "bounding_box": [
+        164,
+        504,
+        73,
+        73
+      ],
+      "measurements": {
+        "area_pct": 0.643,
+        "roi_area_ratio": 1.21481,
+        "fingertips_found": 3,
+        "flagged_finger_length_px": 46.4,
+        "flagged_finger_length_rank": 3
+      },
+      "glove_area": 203952,
+      "processing_time_ms": 182.53302574157715,
+      "overlay_path": "outputs\\overlays\\cotton_tearing_fingertip_cotton_tearing_fingertip_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_tearing_fingertip_cotton_tearing_fingertip_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\tearing_fingertip\\cotton_tearing_fingertip_2.jpg",
+      "defect_name": "tearing_fingertip",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks (convex protrusion + finger-length analysis); the torn finger itself is picked by ranking each finger's largest LAB material-colour-deviation blob (within its own tight ROI) by area ratio, unless every candidate's blob is still small relative to its ROI (a translucent material can show similar weak deviation on every fingertip), in which case ranking switches to a composite of boundary deviation strength, Canny edge density, and local gradient sharpness instead - a real tear has a sharp torn edge, translucency fades in gradually. For the winning finger only, the box/mask is then rebuilt from the full connected anomaly within a moderately dilated version of its ROI (closed to bridge small gaps), so it covers the tear's own full extent rather than a ROI-clipped fragment, then clipped to the glove silhouette and padded to a minimum size relative to the finger's own width",
+      "bounding_box": [
+        211,
+        428,
+        85,
+        59
+      ],
+      "measurements": {
+        "area_pct": 0.422,
+        "roi_area_ratio": 0.55329,
+        "fingertips_found": 4,
+        "flagged_finger_length_px": 61.0,
+        "flagged_finger_length_rank": 4
+      },
+      "glove_area": 205449,
+      "processing_time_ms": 182.27791786193848,
+      "overlay_path": "outputs\\overlays\\cotton_tearing_fingertip_cotton_tearing_fingertip_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_tearing_fingertip_cotton_tearing_fingertip_2_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\touching\\cotton_touching_1.png",
+      "defect_name": "touching",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8956038595428101,
+      "algorithm": "Hybrid masked-glove geometry: missing interdigital valley plus an adaptive-edge internal seam with two-sided material and merged-finger width",
+      "bounding_box": [
+        288,
+        321,
+        67,
+        370
+      ],
+      "measurements": {
+        "area_pct": 6.579,
+        "deep_finger_gap_count": 3,
+        "missing_gap_count": 1,
+        "upper_edge_density": 0.2249,
+        "canny_low": 65,
+        "canny_high": 119,
+        "seam_candidates": 35,
+        "adjusted_seam_score": 0.7572,
+        "texture_penalty": 0.8924,
+        "textured_glove": true,
+        "texture_localisation_ok": true,
+        "merged_width_ratio": 1.9789,
+        "decision_path": "one_missing_gap_plus_seam",
+        "seam_length_ratio": 0.5086,
+        "seam_verticality": 0.9962,
+        "seam_continuity": 1.0,
+        "seam_prominence": 0.4301,
+        "seam_side_support": 1.0,
+        "boundary_distance_px": 54.0
+      },
+      "glove_area": 204847,
+      "processing_time_ms": 260.7569694519043,
+      "overlay_path": "outputs\\overlays\\cotton_touching_cotton_touching_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_touching_cotton_touching_1_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\cotton\\touching\\cotton_touching_2.png",
+      "defect_name": "touching",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9327709185623487,
+      "algorithm": "Hybrid masked-glove geometry: missing interdigital valley plus an adaptive-edge internal seam with two-sided material and merged-finger width",
+      "bounding_box": [
+        149,
+        328,
+        40,
+        299
+      ],
+      "measurements": {
+        "area_pct": 4.494,
+        "deep_finger_gap_count": 3,
+        "missing_gap_count": 1,
+        "upper_edge_density": 0.2368,
+        "canny_low": 81,
+        "canny_high": 142,
+        "seam_candidates": 3,
+        "adjusted_seam_score": 0.8437,
+        "texture_penalty": 0.9772,
+        "textured_glove": true,
+        "texture_localisation_ok": true,
+        "merged_width_ratio": 2.5912,
+        "decision_path": "one_missing_gap_plus_seam",
+        "seam_length_ratio": 0.3766,
+        "seam_verticality": 0.9998,
+        "seam_continuity": 1.0,
+        "seam_prominence": 0.5914,
+        "seam_side_support": 1.0,
+        "boundary_distance_px": 60.35
+      },
+      "glove_area": 227873,
+      "processing_time_ms": 180.01675605773926,
+      "overlay_path": "outputs\\overlays\\cotton_touching_cotton_touching_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\cotton_touching_cotton_touching_2_mask.png",
+      "error": null,
+      "material": "cotton"
+    },
+    {
+      "image_path": "datasets\\latex\\damaged_by_fold\\latex_damaged_by_fold_1.png",
+      "defect_name": "damaged_by_fold",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.775185372753877,
+      "algorithm": "Adaptive masked-palm edge analysis for a long fold ridge, confirmed by line continuity, parallel fold-band support, local contrast and geometry",
+      "bounding_box": [
+        285,
+        774,
+        106,
+        179
+      ],
+      "measurements": {
+        "area_pct": 3.352,
+        "canny_low": 15,
+        "canny_high": 46,
+        "palm_edge_density": 0.0627,
+        "candidate_count": 13,
+        "textured_glove": false,
+        "length_ratio": 0.2252,
+        "fold_angle_deg": 63.92,
+        "edge_continuity": 1.0,
+        "paired_edge_support": 0.92,
+        "side_material_support": 1.0,
+        "local_contrast": 1.0,
+        "local_contrast_gray": 75.0,
+        "fold_relative_y": 0.8055,
+        "side_fold": false,
+        "vertical_fold": true,
+        "line_top_ratio": 0.7044,
+        "line_bottom_ratio": 0.9066,
+        "centre_x_ratio": 0.6203,
+        "textured_candidate_rank": 0.0,
+        "lower_position_score": 0.0,
+        "vertical_preference": 0.0,
+        "localisation_shift_x_px": 0,
+        "localisation_shift_y_px": 0
+      },
+      "glove_area": 203785,
+      "processing_time_ms": 124.50146675109863,
+      "overlay_path": "outputs\\overlays\\latex_damaged_by_fold_latex_damaged_by_fold_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_damaged_by_fold_latex_damaged_by_fold_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\damaged_by_fold\\latex_damaged_by_fold_2.png",
+      "defect_name": "damaged_by_fold",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7867551492151112,
+      "algorithm": "Adaptive masked-palm edge analysis for a long fold ridge, confirmed by line continuity, parallel fold-band support, local contrast and geometry",
+      "bounding_box": [
+        238,
+        641,
+        187,
+        167
+      ],
+      "measurements": {
+        "area_pct": 3.647,
+        "canny_low": 19,
+        "canny_high": 47,
+        "palm_edge_density": 0.0816,
+        "candidate_count": 24,
+        "textured_glove": false,
+        "length_ratio": 0.4552,
+        "fold_angle_deg": 40.89,
+        "edge_continuity": 0.9032,
+        "paired_edge_support": 0.52,
+        "side_material_support": 1.0,
+        "local_contrast": 0.1182,
+        "local_contrast_gray": 6.5,
+        "fold_relative_y": 0.6303,
+        "side_fold": false,
+        "vertical_fold": false,
+        "line_top_ratio": 0.5441,
+        "line_bottom_ratio": 0.7166,
+        "centre_x_ratio": 0.6155,
+        "textured_candidate_rank": 0.0,
+        "lower_position_score": 0.0,
+        "vertical_preference": 0.0,
+        "localisation_shift_x_px": 0,
+        "localisation_shift_y_px": 0
+      },
+      "glove_area": 237336,
+      "processing_time_ms": 227.0517349243164,
+      "overlay_path": "outputs\\overlays\\latex_damaged_by_fold_latex_damaged_by_fold_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_damaged_by_fold_latex_damaged_by_fold_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\dirty\\latex_dirty_1.jpeg",
+      "defect_name": "dirty",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.5888,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component analysis + soiling-halo (surround darkening) measurement",
+      "bounding_box": [
+        107,
+        98,
+        643,
+        902
+      ],
+      "measurements": {
+        "fragment_count": 16,
+        "area_pct": 17.835,
+        "surrounding_darkening": 0.024,
+        "isolation_ratio": 5.46,
+        "cluster_fill": 0.391,
+        "mean_darkening": 0.1363,
+        "median_fragment_area_px": 313.0,
+        "chromatic_fraction": 0.434,
+        "shape_evidence": 0.5888,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 480120,
+      "processing_time_ms": 176.95188522338867,
+      "overlay_path": "outputs\\overlays\\latex_dirty_latex_dirty_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_dirty_latex_dirty_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\dirty\\latex_dirty_2.jpeg",
+      "defect_name": "dirty",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.6019,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component analysis + soiling-halo (surround darkening) measurement",
+      "bounding_box": [
+        0,
+        190,
+        666,
+        810
+      ],
+      "measurements": {
+        "fragment_count": 28,
+        "area_pct": 12.302,
+        "surrounding_darkening": 0.0297,
+        "isolation_ratio": 4.5,
+        "cluster_fill": 0.394,
+        "mean_darkening": 0.138,
+        "median_fragment_area_px": 198.0,
+        "chromatic_fraction": 0.144,
+        "shape_evidence": 0.6752,
+        "chromatic_confidence": 0.891
+      },
+      "glove_area": 435547,
+      "processing_time_ms": 179.6705722808838,
+      "overlay_path": "outputs\\overlays\\latex_dirty_latex_dirty_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_dirty_latex_dirty_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\dirty\\latex_dirty_3.jpeg",
+      "defect_name": "dirty",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.68,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component analysis + soiling-halo (surround darkening) measurement",
+      "bounding_box": [
+        0,
+        172,
+        507,
+        828
+      ],
+      "measurements": {
+        "fragment_count": 24,
+        "area_pct": 16.81,
+        "surrounding_darkening": 0.0341,
+        "isolation_ratio": 4.17,
+        "cluster_fill": 0.464,
+        "mean_darkening": 0.1464,
+        "median_fragment_area_px": 178.0,
+        "chromatic_fraction": 0.121,
+        "shape_evidence": 0.8039,
+        "chromatic_confidence": 0.846
+      },
+      "glove_area": 409284,
+      "processing_time_ms": 179.7318458557129,
+      "overlay_path": "outputs\\overlays\\latex_dirty_latex_dirty_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_dirty_latex_dirty_3_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\discoloration\\latex_discoloration_1.jpeg",
+      "defect_name": "discoloration",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9593944361056508,
+      "algorithm": "Material-adaptive chromatic deviation + connected-component scoring",
+      "bounding_box": [
+        289,
+        630,
+        99,
+        120
+      ],
+      "measurements": {
+        "area_pct": 2.51,
+        "num_regions": 5,
+        "mode": "LAB b* positive colour shift",
+        "threshold": 5.19,
+        "reference_value": 146.005,
+        "median_saturation": 46.0,
+        "mean_anomaly": 9.856,
+        "extent": 0.674,
+        "aspect_ratio": 1.212,
+        "strength_score": 1.0,
+        "area_score": 0.838,
+        "shape_score": 1.0
+      },
+      "glove_area": 318458,
+      "processing_time_ms": 130.0485134124756,
+      "overlay_path": "outputs\\overlays\\latex_discoloration_latex_discoloration_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_discoloration_latex_discoloration_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\discoloration\\latex_discoloration_2.jpeg",
+      "defect_name": "discoloration",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8647305009152371,
+      "algorithm": "Material-adaptive chromatic deviation + connected-component scoring",
+      "bounding_box": [
+        216,
+        821,
+        85,
+        72
+      ],
+      "measurements": {
+        "area_pct": 1.38,
+        "num_regions": 3,
+        "mode": "LAB b* positive colour shift",
+        "threshold": 6.303,
+        "reference_value": 147.44,
+        "median_saturation": 50.0,
+        "mean_anomaly": 9.8,
+        "extent": 0.662,
+        "aspect_ratio": 1.181,
+        "strength_score": 1.0,
+        "area_score": 0.459,
+        "shape_score": 1.0
+      },
+      "glove_area": 294095,
+      "processing_time_ms": 98.54555130004883,
+      "overlay_path": "outputs\\overlays\\latex_discoloration_latex_discoloration_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_discoloration_latex_discoloration_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\finger_not_enough\\latex_finger_not_enough_1.jpg",
+      "defect_name": "finger_not_enough",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.75,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks against a hard prior of 4 main fingers + 1 thumb; the thumb is identified separately (by length ratio, or a column-top-height bulge search) so it never masks a genuinely missing main finger; when fewer than 4 main fingers are found, the missing one is localised to an abnormally wide interior gap when one clearly stands out, else to whichever edge is both wide enough and free of real material (no bulge) - catching an edge-missing finger that widens no interior gap at all; when all 4 main fingers are found, falls back to convexity-defect valley/slot analysis to catch a finger that's present but short of its neighbours' length",
+      "bounding_box": [
+        356,
+        297,
+        114,
+        213
+      ],
+      "measurements": {
+        "area_pct": null,
+        "fingers_found": 3,
+        "main_fingers_found": 3,
+        "thumb_confirmed": true,
+        "gap_type": "interior",
+        "gap_ratio": 1.397,
+        "localization": "gap"
+      },
+      "glove_area": 236164,
+      "processing_time_ms": 74.6152400970459,
+      "overlay_path": "outputs\\overlays\\latex_finger_not_enough_latex_finger_not_enough_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_finger_not_enough_latex_finger_not_enough_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\incomplete_beading\\latex_incomplete_beading_1.png",
+      "defect_name": "incomplete_beading",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7,
+      "algorithm": "Robust lower glove-mask cuff profile: detect deep/wide missing bead notches and abnormal edge roughness relative to a fitted cuff baseline",
+      "bounding_box": [
+        139,
+        781,
+        289,
+        219
+      ],
+      "measurements": {
+        "area_pct": 2.767,
+        "notch_depth_ratio": 0.0551,
+        "notch_span_ratio": 0.2486,
+        "abnormal_area_ratio": 0.0136,
+        "cuff_roughness_ratio": 0.00147,
+        "shallow_abnormal_coverage": 0.4059,
+        "cuff_p90_depth_ratio": 0.0473,
+        "shallow_wide_case": true,
+        "deep_split_case": false,
+        "cuff_profile_columns": 271,
+        "candidate_notches": 1,
+        "baseline_slope": -0.14755,
+        "baseline_intercept": 1008.17
+      },
+      "glove_area": 210818,
+      "processing_time_ms": 58.634042739868164,
+      "overlay_path": "outputs\\overlays\\latex_incomplete_beading_latex_incomplete_beading_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_incomplete_beading_latex_incomplete_beading_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\incomplete_beading\\latex_incomplete_beading_2.png",
+      "defect_name": "incomplete_beading",
+      "status": "success",
+      "detected": false,
+      "detection_score": 0.46120232495513525,
+      "algorithm": "Robust lower glove-mask cuff profile: detect deep/wide missing bead notches and abnormal edge roughness relative to a fitted cuff baseline",
+      "bounding_box": [
+        109,
+        799,
+        313,
+        201
+      ],
+      "measurements": {
+        "area_pct": 1.159,
+        "notch_depth_ratio": 0.2309,
+        "notch_span_ratio": 0.0296,
+        "abnormal_area_ratio": 0.00792,
+        "cuff_roughness_ratio": 0.0,
+        "shallow_abnormal_coverage": 0.0395,
+        "cuff_p90_depth_ratio": 0.0,
+        "shallow_wide_case": false,
+        "deep_split_case": false,
+        "cuff_profile_columns": 304,
+        "candidate_notches": 1,
+        "baseline_slope": -0.0,
+        "baseline_intercept": 999.0
+      },
+      "glove_area": 216905,
+      "processing_time_ms": 57.929277420043945,
+      "overlay_path": "outputs\\overlays\\latex_incomplete_beading_latex_incomplete_beading_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_incomplete_beading_latex_incomplete_beading_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\oversize\\latex_oversize_1.jpeg",
+      "defect_name": "oversize",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.512087871010524,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence",
+      "bounding_box": [
+        208,
+        249,
+        398,
+        751
+      ],
+      "measurements": {
+        "area_pct": 7.2,
+        "global_defect": true,
+        "mode": "smooth",
+        "visualization_type": "loose_folds_plus_measurement_lines",
+        "evidence_description": "Loose folds/excess material plus palm and cuff width measurements",
+        "glove_bounding_box": [
+          140,
+          129,
+          525,
+          871
+        ],
+        "palm_measurement_line": [
+          239,
+          651,
+          544,
+          651
+        ],
+        "cuff_measurement_line": [
+          235,
+          860,
+          487,
+          860
+        ],
+        "palm_measurement_width_px": 306,
+        "cuff_measurement_width_px": 253,
+        "cuff_palm_ratio": 0.8268,
+        "prototype_details": {
+          "panel_title": "Oversize Evidence",
+          "status": "Detected",
+          "confidence_percent": 51.2,
+          "material_mode": "smooth",
+          "evidence_type": "loose_fit",
+          "evidence_label": "Loose Fold / Excess Material",
+          "explanation": "Oversize evidence is based on loose-fold regions together with global glove-fit geometry. Broad folds indicate excess material, while palm/cuff measurements and silhouette features support the loose-fitting classification.",
+          "display_metrics": [
+            {
+              "key": "palm_width_px",
+              "label": "Palm Width",
+              "value": 306,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_width_px",
+              "label": "Cuff Width",
+              "value": 253,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_palm_ratio",
+              "label": "Cuff / Palm Ratio",
+              "value": 0.827,
+              "unit": ""
+            },
+            {
+              "key": "solidity",
+              "label": "Silhouette Solidity",
+              "value": 0.712,
+              "unit": ""
+            },
+            {
+              "key": "fold_density",
+              "label": "Loose-Fold Density",
+              "value": 7.4,
+              "unit": "%"
+            }
+          ],
+          "legend": [
+            {
+              "name": "Loose / excess material",
+              "colour": "yellow"
+            },
+            {
+              "name": "Palm width",
+              "colour": "cyan"
+            },
+            {
+              "name": "Cuff width",
+              "colour": "orange"
+            },
+            {
+              "name": "Oversize evidence region",
+              "colour": "magenta"
+            }
+          ]
+        },
+        "median_gradient": 5.099,
+        "solidity": 0.712,
+        "contour_roughness": 1.755,
+        "extent": 0.5434,
+        "width_height_ratio": 0.6028,
+        "cuff_ratio": 0.8519,
+        "fold_density": 0.0738,
+        "fold_score": 0.337,
+        "concavity_score": 0.84,
+        "cuff_fullness_score": 0.577,
+        "roughness_score": 0.678,
+        "spread_score": 0.006,
+        "bulky_extent_score": 0.0,
+        "base_geometry_fold_score": 0.512,
+        "fold_bulk_score": 0.185
+      },
+      "glove_area": 248483,
+      "processing_time_ms": 93.02997589111328,
+      "overlay_path": "outputs\\overlays\\latex_oversize_latex_oversize_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_oversize_latex_oversize_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\oversize\\latex_oversize_2.jpeg",
+      "defect_name": "oversize",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.6884316694309187,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence",
+      "bounding_box": [
+        108,
+        117,
+        497,
+        883
+      ],
+      "measurements": {
+        "area_pct": 13.37,
+        "global_defect": true,
+        "mode": "smooth",
+        "visualization_type": "loose_folds_plus_measurement_lines",
+        "evidence_description": "Loose folds/excess material plus palm and cuff width measurements",
+        "glove_bounding_box": [
+          95,
+          92,
+          538,
+          908
+        ],
+        "palm_measurement_line": [
+          181,
+          636,
+          565,
+          636
+        ],
+        "cuff_measurement_line": [
+          192,
+          854,
+          483,
+          854
+        ],
+        "palm_measurement_width_px": 385,
+        "cuff_measurement_width_px": 291,
+        "cuff_palm_ratio": 0.7558,
+        "prototype_details": {
+          "panel_title": "Oversize Evidence",
+          "status": "Detected",
+          "confidence_percent": 68.8,
+          "material_mode": "smooth",
+          "evidence_type": "loose_fit",
+          "evidence_label": "Loose Fold / Excess Material",
+          "explanation": "Oversize evidence is based on loose-fold regions together with global glove-fit geometry. Broad folds indicate excess material, while palm/cuff measurements and silhouette features support the loose-fitting classification.",
+          "display_metrics": [
+            {
+              "key": "palm_width_px",
+              "label": "Palm Width",
+              "value": 385,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_width_px",
+              "label": "Cuff Width",
+              "value": 291,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_palm_ratio",
+              "label": "Cuff / Palm Ratio",
+              "value": 0.756,
+              "unit": ""
+            },
+            {
+              "key": "solidity",
+              "label": "Silhouette Solidity",
+              "value": 0.809,
+              "unit": ""
+            },
+            {
+              "key": "fold_density",
+              "label": "Loose-Fold Density",
+              "value": 14.1,
+              "unit": "%"
+            }
+          ],
+          "legend": [
+            {
+              "name": "Loose / excess material",
+              "colour": "yellow"
+            },
+            {
+              "name": "Palm width",
+              "colour": "cyan"
+            },
+            {
+              "name": "Cuff width",
+              "colour": "orange"
+            },
+            {
+              "name": "Oversize evidence region",
+              "colour": "magenta"
+            }
+          ]
+        },
+        "median_gradient": 7.211,
+        "solidity": 0.8092,
+        "contour_roughness": 1.5961,
+        "extent": 0.6272,
+        "width_height_ratio": 0.5925,
+        "cuff_ratio": 0.7225,
+        "fold_density": 0.1414,
+        "fold_score": 0.857,
+        "concavity_score": 0.354,
+        "cuff_fullness_score": 0.207,
+        "roughness_score": 0.325,
+        "spread_score": 0.0,
+        "bulky_extent_score": 0.482,
+        "base_geometry_fold_score": 0.486,
+        "fold_bulk_score": 0.688
+      },
+      "glove_area": 306370,
+      "processing_time_ms": 108.40439796447754,
+      "overlay_path": "outputs\\overlays\\latex_oversize_latex_oversize_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_oversize_latex_oversize_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\plastic_contamination\\latex_plastic_1.jpeg",
+      "defect_name": "plastic_contamination",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7184118641053183,
+      "algorithm": "Material-adaptive texture/reflection evidence + local object completion",
+      "bounding_box": [
+        219,
+        666,
+        68,
+        51
+      ],
+      "measurements": {
+        "area_pct": 0.49,
+        "mode": "latex",
+        "median_saturation": 44.0,
+        "median_gradient": 4.0,
+        "extent": 0.669,
+        "aspect_ratio": 1.088,
+        "strength_score": 0.55,
+        "shape_score": 1.0,
+        "saturation_prior": 0.512,
+        "num_regions": 3.0,
+        "texture_threshold": 15.753,
+        "lightness_threshold": 9.771,
+        "object_completion": 1.0
+      },
+      "glove_area": 301103,
+      "processing_time_ms": 219.35701370239258,
+      "overlay_path": "outputs\\overlays\\latex_plastic_contamination_latex_plastic_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_plastic_contamination_latex_plastic_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\plastic_contamination\\latex_plastic_2.jpeg",
+      "defect_name": "plastic_contamination",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7841821412126065,
+      "algorithm": "Material-adaptive texture/reflection evidence + local object completion",
+      "bounding_box": [
+        543,
+        657,
+        56,
+        69
+      ],
+      "measurements": {
+        "area_pct": 0.78,
+        "mode": "latex",
+        "median_saturation": 43.0,
+        "median_gradient": 4.24,
+        "extent": 0.586,
+        "aspect_ratio": 2.091,
+        "strength_score": 0.624,
+        "shape_score": 0.957,
+        "saturation_prior": 1.0,
+        "num_regions": 4.0,
+        "texture_threshold": 16.4,
+        "lightness_threshold": 10.161,
+        "object_completion": 1.0
+      },
+      "glove_area": 293488,
+      "processing_time_ms": 256.1964988708496,
+      "overlay_path": "outputs\\overlays\\latex_plastic_contamination_latex_plastic_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_plastic_contamination_latex_plastic_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\spotting\\latex_spotting_1.jpeg",
+      "defect_name": "spotting",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9284,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component shape filtering (circularity/size) + speck isolation ratio",
+      "bounding_box": [
+        70,
+        271,
+        481,
+        630
+      ],
+      "measurements": {
+        "speck_count": 72,
+        "area_pct": 2.422,
+        "median_speck_area_px": 39.5,
+        "median_circularity": 1.0,
+        "median_elongation": 1.2,
+        "isolation_ratio": 10.71,
+        "surrounding_darkening": 0.0156,
+        "dispersion": 0.727,
+        "chromatic_fraction": 0.958,
+        "shape_evidence": 0.9284,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 257663,
+      "processing_time_ms": 205.55806159973145,
+      "overlay_path": "outputs\\overlays\\latex_spotting_latex_spotting_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_spotting_latex_spotting_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\spotting\\latex_spotting_2.jpeg",
+      "defect_name": "spotting",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7256,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component shape filtering (circularity/size) + speck isolation ratio",
+      "bounding_box": [
+        182,
+        295,
+        340,
+        659
+      ],
+      "measurements": {
+        "speck_count": 30,
+        "area_pct": 0.998,
+        "median_speck_area_px": 43.5,
+        "median_circularity": 1.0,
+        "median_elongation": 1.167,
+        "isolation_ratio": 12.62,
+        "surrounding_darkening": 0.0147,
+        "dispersion": 0.727,
+        "chromatic_fraction": 0.961,
+        "shape_evidence": 0.7256,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 266060,
+      "processing_time_ms": 169.07477378845215,
+      "overlay_path": "outputs\\overlays\\latex_spotting_latex_spotting_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_spotting_latex_spotting_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\spotting\\latex_spotting_3.jpeg",
+      "defect_name": "spotting",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.6889,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component shape filtering (circularity/size) + speck isolation ratio",
+      "bounding_box": [
+        277,
+        188,
+        324,
+        736
+      ],
+      "measurements": {
+        "speck_count": 46,
+        "area_pct": 1.72,
+        "median_speck_area_px": 35.5,
+        "median_circularity": 1.0,
+        "median_elongation": 1.172,
+        "isolation_ratio": 5.75,
+        "surrounding_darkening": 0.0202,
+        "dispersion": 0.849,
+        "chromatic_fraction": 0.727,
+        "shape_evidence": 0.6889,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 251111,
+      "processing_time_ms": 180.9840202331543,
+      "overlay_path": "outputs\\overlays\\latex_spotting_latex_spotting_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_spotting_latex_spotting_3_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\stain\\latex_stain_1.jpeg",
+      "defect_name": "stain",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.5437,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component geometry (area/elongation/circularity) + edge-sharpness test",
+      "bounding_box": [
+        110,
+        175,
+        474,
+        825
+      ],
+      "measurements": {
+        "mark_count": 12,
+        "area_pct": 10.707,
+        "largest_mark_pct": 4.305,
+        "median_mark_area_px": 447.5,
+        "median_elongation": 1.7,
+        "median_circularity": 0.306,
+        "isolation_ratio": 5.45,
+        "edge_sharpness": 0.747,
+        "chromatic_fraction": 0.089,
+        "shape_evidence": 0.6927,
+        "chromatic_confidence": 0.785
+      },
+      "glove_area": 341122,
+      "processing_time_ms": 164.24298286437988,
+      "overlay_path": "outputs\\overlays\\latex_stain_latex_stain_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_stain_latex_stain_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\stain\\latex_stain_2.jpeg",
+      "defect_name": "stain",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8925,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component geometry (area/elongation/circularity) + edge-sharpness test",
+      "bounding_box": [
+        0,
+        176,
+        568,
+        824
+      ],
+      "measurements": {
+        "mark_count": 6,
+        "area_pct": 18.262,
+        "largest_mark_pct": 8.113,
+        "median_mark_area_px": 3019.0,
+        "median_elongation": 1.592,
+        "median_circularity": 0.246,
+        "isolation_ratio": 9.29,
+        "edge_sharpness": 0.863,
+        "chromatic_fraction": 0.355,
+        "shape_evidence": 0.8925,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 442464,
+      "processing_time_ms": 160.42494773864746,
+      "overlay_path": "outputs\\overlays\\latex_stain_latex_stain_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_stain_latex_stain_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\tearing\\latex_tearing_1.jpg",
+      "defect_name": "tearing",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7062845007129349,
+      "algorithm": "Largest connected LAB material-colour-deviation blob inside the eroded glove interior, cross-checked against Canny edges from gray_enhanced",
+      "bounding_box": [
+        206,
+        793,
+        272,
+        207
+      ],
+      "measurements": {
+        "area_pct": 6.596,
+        "hole_area_ratio": 0.06357
+      },
+      "glove_area": 202995,
+      "processing_time_ms": 85.96634864807129,
+      "overlay_path": "outputs\\overlays\\latex_tearing_latex_tearing_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_tearing_latex_tearing_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\tearing\\latex_tearing_2.jpg",
+      "defect_name": "tearing",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8017084603958334,
+      "algorithm": "Largest connected LAB material-colour-deviation blob inside the eroded glove interior, cross-checked against Canny edges from gray_enhanced",
+      "bounding_box": [
+        44,
+        642,
+        389,
+        197
+      ],
+      "measurements": {
+        "area_pct": 7.559,
+        "hole_area_ratio": 0.07215
+      },
+      "glove_area": 216101,
+      "processing_time_ms": 75.43110847473145,
+      "overlay_path": "outputs\\overlays\\latex_tearing_latex_tearing_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_tearing_latex_tearing_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\tearing_fingertip\\latex_tearing_fingertip_1.jpg",
+      "defect_name": "tearing_fingertip",
+      "status": "success",
+      "detected": false,
+      "detection_score": 0.040310077519379844,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks (convex protrusion + finger-length analysis); the torn finger itself is picked by ranking each finger's largest LAB material-colour-deviation blob (within its own tight ROI) by area ratio, unless every candidate's blob is still small relative to its ROI (a translucent material can show similar weak deviation on every fingertip), in which case ranking switches to a composite of boundary deviation strength, Canny edge density, and local gradient sharpness instead - a real tear has a sharp torn edge, translucency fades in gradually. For the winning finger only, the box/mask is then rebuilt from the full connected anomaly within a moderately dilated version of its ROI (closed to bridge small gaps), so it covers the tear's own full extent rather than a ROI-clipped fragment, then clipped to the glove silhouette and padded to a minimum size relative to the finger's own width",
+      "bounding_box": [
+        210,
+        448,
+        17,
+        17
+      ],
+      "measurements": {
+        "area_pct": 0.022,
+        "roi_area_ratio": 0.02016,
+        "fingertips_found": 4,
+        "flagged_finger_length_px": 94.7,
+        "flagged_finger_length_rank": 2
+      },
+      "glove_area": 178933,
+      "processing_time_ms": 282.5796604156494,
+      "overlay_path": "outputs\\overlays\\latex_tearing_fingertip_latex_tearing_fingertip_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_tearing_fingertip_latex_tearing_fingertip_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\touching\\latex_touching_1.png",
+      "defect_name": "touching",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9359647233042473,
+      "algorithm": "Hybrid masked-glove geometry: missing interdigital valley plus an adaptive-edge internal seam with two-sided material and merged-finger width",
+      "bounding_box": [
+        148,
+        472,
+        78,
+        91
+      ],
+      "measurements": {
+        "area_pct": 1.419,
+        "deep_finger_gap_count": 3,
+        "missing_gap_count": 1,
+        "upper_edge_density": 0.0534,
+        "canny_low": 16,
+        "canny_high": 46,
+        "seam_candidates": 6,
+        "adjusted_seam_score": 0.8511,
+        "texture_penalty": 0.0,
+        "textured_glove": false,
+        "texture_localisation_ok": true,
+        "merged_width_ratio": 1.7105,
+        "decision_path": "one_missing_gap_plus_seam",
+        "seam_length_ratio": 0.1088,
+        "seam_verticality": 0.7796,
+        "seam_continuity": 0.9677,
+        "seam_prominence": 0.875,
+        "seam_side_support": 1.0,
+        "boundary_distance_px": 44.58
+      },
+      "glove_area": 215175,
+      "processing_time_ms": 138.31734657287598,
+      "overlay_path": "outputs\\overlays\\latex_touching_latex_touching_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_touching_latex_touching_1_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\latex\\touching\\latex_touching_2.png",
+      "defect_name": "touching",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.957,
+      "algorithm": "Hybrid masked-glove geometry: missing interdigital valley plus an adaptive-edge internal seam with two-sided material and merged-finger width",
+      "bounding_box": [
+        102,
+        443,
+        39,
+        212
+      ],
+      "measurements": {
+        "area_pct": 2.93,
+        "deep_finger_gap_count": 3,
+        "missing_gap_count": 1,
+        "upper_edge_density": 0.0593,
+        "canny_low": 15,
+        "canny_high": 41,
+        "seam_candidates": 27,
+        "adjusted_seam_score": 0.9,
+        "texture_penalty": 0.0,
+        "textured_glove": false,
+        "texture_localisation_ok": true,
+        "merged_width_ratio": 1.9405,
+        "decision_path": "one_missing_gap_plus_seam",
+        "seam_length_ratio": 0.2447,
+        "seam_verticality": 0.9994,
+        "seam_continuity": 1.0,
+        "seam_prominence": 1.0,
+        "seam_side_support": 1.0,
+        "boundary_distance_px": 59.0
+      },
+      "glove_area": 229776,
+      "processing_time_ms": 197.523832321167,
+      "overlay_path": "outputs\\overlays\\latex_touching_latex_touching_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\latex_touching_latex_touching_2_mask.png",
+      "error": null,
+      "material": "latex"
+    },
+    {
+      "image_path": "datasets\\nitrile\\damaged_by_fold\\nitrile_damaged_by_fold_1.png",
+      "defect_name": "damaged_by_fold",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7548553260260377,
+      "algorithm": "Adaptive masked-palm edge analysis for a long fold ridge, confirmed by line continuity, parallel fold-band support, local contrast and geometry",
+      "bounding_box": [
+        307,
+        589,
+        67,
+        189
+      ],
+      "measurements": {
+        "area_pct": 3.381,
+        "canny_low": 21,
+        "canny_high": 53,
+        "palm_edge_density": 0.0664,
+        "candidate_count": 11,
+        "textured_glove": false,
+        "length_ratio": 0.3445,
+        "fold_angle_deg": 80.1,
+        "edge_continuity": 1.0,
+        "paired_edge_support": 0.92,
+        "side_material_support": 1.0,
+        "local_contrast": 0.1481,
+        "local_contrast_gray": 12.0,
+        "fold_relative_y": 0.5566,
+        "side_fold": true,
+        "vertical_fold": false,
+        "line_top_ratio": 0.4525,
+        "line_bottom_ratio": 0.6606,
+        "centre_x_ratio": 0.6811,
+        "textured_candidate_rank": 0.0,
+        "lower_position_score": 0.0,
+        "vertical_preference": 0.0,
+        "localisation_shift_x_px": 0,
+        "localisation_shift_y_px": 0
+      },
+      "glove_area": 219812,
+      "processing_time_ms": 167.03557968139648,
+      "overlay_path": "outputs\\overlays\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\damaged_by_fold\\nitrile_damaged_by_fold_2.png",
+      "defect_name": "damaged_by_fold",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.695168356954249,
+      "algorithm": "Adaptive masked-palm edge analysis for a long fold ridge, confirmed by line continuity, parallel fold-band support, local contrast and geometry",
+      "bounding_box": [
+        364,
+        681,
+        48,
+        112
+      ],
+      "measurements": {
+        "area_pct": 1.779,
+        "canny_low": 15,
+        "canny_high": 51,
+        "palm_edge_density": 0.0423,
+        "candidate_count": 8,
+        "textured_glove": false,
+        "length_ratio": 0.1044,
+        "fold_angle_deg": 78.54,
+        "edge_continuity": 1.0,
+        "paired_edge_support": 0.92,
+        "side_material_support": 1.0,
+        "local_contrast": 0.7662,
+        "local_contrast_gray": 59.0,
+        "fold_relative_y": 0.6349,
+        "side_fold": true,
+        "vertical_fold": true,
+        "line_top_ratio": 0.5837,
+        "line_bottom_ratio": 0.686,
+        "centre_x_ratio": 0.7782,
+        "textured_candidate_rank": 0.0,
+        "lower_position_score": 0.0,
+        "vertical_preference": 0.0,
+        "localisation_shift_x_px": 0,
+        "localisation_shift_y_px": 0
+      },
+      "glove_area": 192800,
+      "processing_time_ms": 114.20750617980957,
+      "overlay_path": "outputs\\overlays\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\discoloration\\nitrile_discoloration_1.jpeg",
+      "defect_name": "discoloration",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.926850097801212,
+      "algorithm": "Material-adaptive chromatic deviation + connected-component scoring",
+      "bounding_box": [
+        439,
+        801,
+        145,
+        199
+      ],
+      "measurements": {
+        "area_pct": 4.4,
+        "num_regions": 2,
+        "mode": "HSV hue deviation",
+        "threshold": 2.5,
+        "reference_value": 105.001,
+        "median_saturation": 240.0,
+        "mean_anomaly": 4.187,
+        "extent": 0.474,
+        "aspect_ratio": 1.372,
+        "strength_score": 0.93,
+        "area_score": 1.0,
+        "shape_score": 0.878
+      },
+      "glove_area": 310462,
+      "processing_time_ms": 140.00320434570312,
+      "overlay_path": "outputs\\overlays\\nitrile_discoloration_nitrile_discoloration_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_discoloration_nitrile_discoloration_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\discoloration\\nitrile_discoloration_2.jpeg",
+      "defect_name": "discoloration",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.744698557960508,
+      "algorithm": "Material-adaptive chromatic deviation + connected-component scoring",
+      "bounding_box": [
+        281,
+        598,
+        110,
+        82
+      ],
+      "measurements": {
+        "area_pct": 1.69,
+        "num_regions": 4,
+        "mode": "HSV hue deviation",
+        "threshold": 2.5,
+        "reference_value": 103.135,
+        "median_saturation": 253.0,
+        "mean_anomaly": 2.832,
+        "extent": 0.592,
+        "aspect_ratio": 1.341,
+        "strength_score": 0.629,
+        "area_score": 0.562,
+        "shape_score": 0.96
+      },
+      "glove_area": 316459,
+      "processing_time_ms": 144.2394256591797,
+      "overlay_path": "outputs\\overlays\\nitrile_discoloration_nitrile_discoloration_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_discoloration_nitrile_discoloration_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\discoloration\\nitrile_discoloration_3.jpeg",
+      "defect_name": "discoloration",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8849040408545115,
+      "algorithm": "Material-adaptive chromatic deviation + connected-component scoring",
+      "bounding_box": [
+        180,
+        250,
+        89,
+        133
+      ],
+      "measurements": {
+        "area_pct": 2.02,
+        "num_regions": 2,
+        "mode": "HSV hue deviation",
+        "threshold": 2.5,
+        "reference_value": 104.993,
+        "median_saturation": 235.0,
+        "mean_anomaly": 4.228,
+        "extent": 0.604,
+        "aspect_ratio": 1.494,
+        "strength_score": 0.94,
+        "area_score": 0.675,
+        "shape_score": 0.968
+      },
+      "glove_area": 353337,
+      "processing_time_ms": 123.97336959838867,
+      "overlay_path": "outputs\\overlays\\nitrile_discoloration_nitrile_discoloration_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_discoloration_nitrile_discoloration_3_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\finger_not_enough\\nitrile_finger_not_enough_1.jpg",
+      "defect_name": "finger_not_enough",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.75,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks against a hard prior of 4 main fingers + 1 thumb; the thumb is identified separately (by length ratio, or a column-top-height bulge search) so it never masks a genuinely missing main finger; when fewer than 4 main fingers are found, the missing one is localised to an abnormally wide interior gap when one clearly stands out, else to whichever edge is both wide enough and free of real material (no bulge) - catching an edge-missing finger that widens no interior gap at all; when all 4 main fingers are found, falls back to convexity-defect valley/slot analysis to catch a finger that's present but short of its neighbours' length",
+      "bounding_box": [
+        381,
+        260,
+        157,
+        277
+      ],
+      "measurements": {
+        "area_pct": null,
+        "fingers_found": 3,
+        "main_fingers_found": 3,
+        "thumb_confirmed": false,
+        "gap_type": "interior",
+        "gap_ratio": 1.537,
+        "localization": "gap"
+      },
+      "glove_area": 275647,
+      "processing_time_ms": 88.84787559509277,
+      "overlay_path": "outputs\\overlays\\nitrile_finger_not_enough_nitrile_finger_not_enough_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_finger_not_enough_nitrile_finger_not_enough_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\finger_not_enough\\nitrile_finger_not_enough_2.jpg",
+      "defect_name": "finger_not_enough",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.75,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks against a hard prior of 4 main fingers + 1 thumb; the thumb is identified separately (by length ratio, or a column-top-height bulge search) so it never masks a genuinely missing main finger; when fewer than 4 main fingers are found, the missing one is localised to an abnormally wide interior gap when one clearly stands out, else to whichever edge is both wide enough and free of real material (no bulge) - catching an edge-missing finger that widens no interior gap at all; when all 4 main fingers are found, falls back to convexity-defect valley/slot analysis to catch a finger that's present but short of its neighbours' length",
+      "bounding_box": [
+        526,
+        255,
+        64,
+        270
+      ],
+      "measurements": {
+        "area_pct": null,
+        "fingers_found": 3,
+        "main_fingers_found": 3,
+        "thumb_confirmed": true,
+        "gap_type": "edge_right",
+        "gap_ratio": 1.033,
+        "localization": "gap"
+      },
+      "glove_area": 252343,
+      "processing_time_ms": 70.11294364929199,
+      "overlay_path": "outputs\\overlays\\nitrile_finger_not_enough_nitrile_finger_not_enough_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_finger_not_enough_nitrile_finger_not_enough_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\incomplete_beading\\nitrile_incomplete_beading_1.png",
+      "defect_name": "incomplete_beading",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7,
+      "algorithm": "Robust lower glove-mask cuff profile: detect deep/wide missing bead notches and abnormal edge roughness relative to a fitted cuff baseline",
+      "bounding_box": [
+        134,
+        782,
+        269,
+        208
+      ],
+      "measurements": {
+        "area_pct": 2.354,
+        "notch_depth_ratio": 0.0208,
+        "notch_span_ratio": 0.0308,
+        "abnormal_area_ratio": 0.00085,
+        "cuff_roughness_ratio": 0.00117,
+        "shallow_abnormal_coverage": 0.3852,
+        "cuff_p90_depth_ratio": 0.0164,
+        "shallow_wide_case": true,
+        "deep_split_case": false,
+        "cuff_profile_columns": 257,
+        "candidate_notches": 1,
+        "baseline_slope": -0.12937,
+        "baseline_intercept": 1005.48
+      },
+      "glove_area": 207602,
+      "processing_time_ms": 66.1160945892334,
+      "overlay_path": "outputs\\overlays\\nitrile_incomplete_beading_nitrile_incomplete_beading_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_incomplete_beading_nitrile_incomplete_beading_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\incomplete_beading\\nitrile_incomplete_beading_2.png",
+      "defect_name": "incomplete_beading",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.68,
+      "algorithm": "Robust lower glove-mask cuff profile: detect deep/wide missing bead notches and abnormal edge roughness relative to a fitted cuff baseline",
+      "bounding_box": [
+        134,
+        848,
+        297,
+        152
+      ],
+      "measurements": {
+        "area_pct": 0.861,
+        "notch_depth_ratio": 0.2037,
+        "notch_span_ratio": 0.0644,
+        "abnormal_area_ratio": 0.01433,
+        "cuff_roughness_ratio": 0.0,
+        "shallow_abnormal_coverage": 0.1265,
+        "cuff_p90_depth_ratio": 0.1578,
+        "shallow_wide_case": false,
+        "deep_split_case": true,
+        "cuff_profile_columns": 340,
+        "candidate_notches": 2,
+        "baseline_slope": -0.00014,
+        "baseline_intercept": 999.03
+      },
+      "glove_area": 253779,
+      "processing_time_ms": 64.33844566345215,
+      "overlay_path": "outputs\\overlays\\nitrile_incomplete_beading_nitrile_incomplete_beading_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_incomplete_beading_nitrile_incomplete_beading_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\oversize\\nitrile_oversize_1.jpeg",
+      "defect_name": "oversize",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.786224632101861,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence",
+      "bounding_box": [
+        79,
+        151,
+        554,
+        474
+      ],
+      "measurements": {
+        "area_pct": 12.55,
+        "global_defect": true,
+        "mode": "smooth",
+        "visualization_type": "loose_folds_plus_measurement_lines",
+        "evidence_description": "Loose folds/excess material plus palm and cuff width measurements",
+        "glove_bounding_box": [
+          66,
+          139,
+          582,
+          498
+        ],
+        "palm_measurement_line": [
+          122,
+          437,
+          461,
+          437
+        ],
+        "cuff_measurement_line": [
+          175,
+          557,
+          584,
+          557
+        ],
+        "palm_measurement_width_px": 340,
+        "cuff_measurement_width_px": 410,
+        "cuff_palm_ratio": 1.2059,
+        "prototype_details": {
+          "panel_title": "Oversize Evidence",
+          "status": "Detected",
+          "confidence_percent": 78.6,
+          "material_mode": "smooth",
+          "evidence_type": "loose_fit",
+          "evidence_label": "Loose Fold / Excess Material",
+          "explanation": "Oversize evidence is based on loose-fold regions together with global glove-fit geometry. Broad folds indicate excess material, while palm/cuff measurements and silhouette features support the loose-fitting classification.",
+          "display_metrics": [
+            {
+              "key": "palm_width_px",
+              "label": "Palm Width",
+              "value": 340,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_width_px",
+              "label": "Cuff Width",
+              "value": 410,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_palm_ratio",
+              "label": "Cuff / Palm Ratio",
+              "value": 1.206,
+              "unit": ""
+            },
+            {
+              "key": "solidity",
+              "label": "Silhouette Solidity",
+              "value": 0.737,
+              "unit": ""
+            },
+            {
+              "key": "fold_density",
+              "label": "Loose-Fold Density",
+              "value": 13.1,
+              "unit": "%"
+            }
+          ],
+          "legend": [
+            {
+              "name": "Loose / excess material",
+              "colour": "yellow"
+            },
+            {
+              "name": "Palm width",
+              "colour": "cyan"
+            },
+            {
+              "name": "Cuff width",
+              "colour": "orange"
+            },
+            {
+              "name": "Oversize evidence region",
+              "colour": "magenta"
+            }
+          ]
+        },
+        "median_gradient": 6.325,
+        "solidity": 0.737,
+        "contour_roughness": 1.6823,
+        "extent": 0.5397,
+        "width_height_ratio": 1.1687,
+        "cuff_ratio": 1.0297,
+        "fold_density": 0.1315,
+        "fold_score": 0.781,
+        "concavity_score": 0.715,
+        "cuff_fullness_score": 1.0,
+        "roughness_score": 0.516,
+        "spread_score": 1.0,
+        "bulky_extent_score": 0.0,
+        "base_geometry_fold_score": 0.786,
+        "fold_bulk_score": 0.429
+      },
+      "glove_area": 156416,
+      "processing_time_ms": 111.39869689941406,
+      "overlay_path": "outputs\\overlays\\nitrile_oversize_nitrile_oversize_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_oversize_nitrile_oversize_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\oversize\\nitrile_oversize_2.jpeg",
+      "defect_name": "oversize",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8024298453569131,
+      "algorithm": "Explainable global fit geometry + loose-fold evidence",
+      "bounding_box": [
+        110,
+        133,
+        508,
+        867
+      ],
+      "measurements": {
+        "area_pct": 14.83,
+        "global_defect": true,
+        "mode": "smooth",
+        "visualization_type": "loose_folds_plus_measurement_lines",
+        "evidence_description": "Loose folds/excess material plus palm and cuff width measurements",
+        "glove_bounding_box": [
+          80,
+          121,
+          550,
+          879
+        ],
+        "palm_measurement_line": [
+          149,
+          648,
+          560,
+          648
+        ],
+        "cuff_measurement_line": [
+          180,
+          859,
+          482,
+          859
+        ],
+        "palm_measurement_width_px": 412,
+        "cuff_measurement_width_px": 303,
+        "cuff_palm_ratio": 0.7354,
+        "prototype_details": {
+          "panel_title": "Oversize Evidence",
+          "status": "Detected",
+          "confidence_percent": 80.2,
+          "material_mode": "smooth",
+          "evidence_type": "loose_fit",
+          "evidence_label": "Loose Fold / Excess Material",
+          "explanation": "Oversize evidence is based on loose-fold regions together with global glove-fit geometry. Broad folds indicate excess material, while palm/cuff measurements and silhouette features support the loose-fitting classification.",
+          "display_metrics": [
+            {
+              "key": "palm_width_px",
+              "label": "Palm Width",
+              "value": 412,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_width_px",
+              "label": "Cuff Width",
+              "value": 303,
+              "unit": "px"
+            },
+            {
+              "key": "cuff_palm_ratio",
+              "label": "Cuff / Palm Ratio",
+              "value": 0.735,
+              "unit": ""
+            },
+            {
+              "key": "solidity",
+              "label": "Silhouette Solidity",
+              "value": 0.823,
+              "unit": ""
+            },
+            {
+              "key": "fold_density",
+              "label": "Loose-Fold Density",
+              "value": 15.6,
+              "unit": "%"
+            }
+          ],
+          "legend": [
+            {
+              "name": "Loose / excess material",
+              "colour": "yellow"
+            },
+            {
+              "name": "Palm width",
+              "colour": "cyan"
+            },
+            {
+              "name": "Cuff width",
+              "colour": "orange"
+            },
+            {
+              "name": "Oversize evidence region",
+              "colour": "magenta"
+            }
+          ]
+        },
+        "median_gradient": 7.211,
+        "solidity": 0.8231,
+        "contour_roughness": 1.6221,
+        "extent": 0.6455,
+        "width_height_ratio": 0.6257,
+        "cuff_ratio": 0.7293,
+        "fold_density": 0.1562,
+        "fold_score": 0.971,
+        "concavity_score": 0.284,
+        "cuff_fullness_score": 0.227,
+        "roughness_score": 0.382,
+        "spread_score": 0.057,
+        "bulky_extent_score": 0.597,
+        "base_geometry_fold_score": 0.53,
+        "fold_bulk_score": 0.802
+      },
+      "glove_area": 312077,
+      "processing_time_ms": 111.55486106872559,
+      "overlay_path": "outputs\\overlays\\nitrile_oversize_nitrile_oversize_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_oversize_nitrile_oversize_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\plastic_contamination\\nitrile_plastic_1.jpeg",
+      "defect_name": "plastic_contamination",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9277475181386553,
+      "algorithm": "Material-adaptive texture/reflection evidence + local object completion",
+      "bounding_box": [
+        239,
+        584,
+        127,
+        99
+      ],
+      "measurements": {
+        "area_pct": 2.66,
+        "mode": "nitrile",
+        "median_saturation": 240.0,
+        "median_gradient": 5.66,
+        "extent": 0.666,
+        "aspect_ratio": 1.263,
+        "strength_score": 1.0,
+        "shape_score": 1.0,
+        "saturation_prior": 1.0,
+        "num_regions": 6.0,
+        "texture_threshold": 17.362,
+        "chroma_threshold": 7.962,
+        "lightness_threshold": 14.029,
+        "saturation_threshold": 16.787,
+        "object_completion": 1.0
+      },
+      "glove_area": 291918,
+      "processing_time_ms": 218.19496154785156,
+      "overlay_path": "outputs\\overlays\\nitrile_plastic_contamination_nitrile_plastic_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_plastic_contamination_nitrile_plastic_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\plastic_contamination\\nitrile_plastic_2.jpeg",
+      "defect_name": "plastic_contamination",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9261810974854452,
+      "algorithm": "Material-adaptive texture/reflection evidence + local object completion",
+      "bounding_box": [
+        283,
+        713,
+        93,
+        107
+      ],
+      "measurements": {
+        "area_pct": 1.09,
+        "mode": "nitrile",
+        "median_saturation": 253.0,
+        "median_gradient": 4.0,
+        "extent": 0.662,
+        "aspect_ratio": 1.629,
+        "strength_score": 1.0,
+        "shape_score": 1.0,
+        "saturation_prior": 1.0,
+        "num_regions": 2.0,
+        "texture_threshold": 15.0,
+        "chroma_threshold": 11.511,
+        "lightness_threshold": 12.0,
+        "saturation_threshold": 15.0,
+        "object_completion": 1.0
+      },
+      "glove_area": 336375,
+      "processing_time_ms": 259.94420051574707,
+      "overlay_path": "outputs\\overlays\\nitrile_plastic_contamination_nitrile_plastic_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_plastic_contamination_nitrile_plastic_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\spotting\\nitrile_spotting_1.jpeg",
+      "defect_name": "spotting",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9605,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component shape filtering (circularity/size) + speck isolation ratio",
+      "bounding_box": [
+        145,
+        213,
+        397,
+        572
+      ],
+      "measurements": {
+        "speck_count": 80,
+        "area_pct": 4.024,
+        "median_speck_area_px": 46.5,
+        "median_circularity": 1.0,
+        "median_elongation": 1.174,
+        "isolation_ratio": 9.64,
+        "surrounding_darkening": 0.0267,
+        "dispersion": 0.722,
+        "chromatic_fraction": 0.951,
+        "shape_evidence": 0.9605,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 219380,
+      "processing_time_ms": 244.4148063659668,
+      "overlay_path": "outputs\\overlays\\nitrile_spotting_nitrile_spotting_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_spotting_nitrile_spotting_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\spotting\\nitrile_spotting_2.jpeg",
+      "defect_name": "spotting",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9511,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component shape filtering (circularity/size) + speck isolation ratio",
+      "bounding_box": [
+        146,
+        199,
+        450,
+        590
+      ],
+      "measurements": {
+        "speck_count": 81,
+        "area_pct": 3.554,
+        "median_speck_area_px": 49.0,
+        "median_circularity": 0.985,
+        "median_elongation": 1.176,
+        "isolation_ratio": 9.07,
+        "surrounding_darkening": 0.0283,
+        "dispersion": 0.727,
+        "chromatic_fraction": 0.939,
+        "shape_evidence": 0.9511,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 221962,
+      "processing_time_ms": 237.61320114135742,
+      "overlay_path": "outputs\\overlays\\nitrile_spotting_nitrile_spotting_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_spotting_nitrile_spotting_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\spotting\\nitrile_spotting_3.jpeg",
+      "defect_name": "spotting",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9536,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component shape filtering (circularity/size) + speck isolation ratio",
+      "bounding_box": [
+        98,
+        254,
+        441,
+        546
+      ],
+      "measurements": {
+        "speck_count": 88,
+        "area_pct": 3.68,
+        "median_speck_area_px": 43.0,
+        "median_circularity": 1.0,
+        "median_elongation": 1.2,
+        "isolation_ratio": 10.49,
+        "surrounding_darkening": 0.021,
+        "dispersion": 0.705,
+        "chromatic_fraction": 0.943,
+        "shape_evidence": 0.9536,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 241415,
+      "processing_time_ms": 261.59191131591797,
+      "overlay_path": "outputs\\overlays\\nitrile_spotting_nitrile_spotting_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_spotting_nitrile_spotting_3_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\stain\\nitrile_stain_1.jpeg",
+      "defect_name": "stain",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component geometry (area/elongation/circularity) + edge-sharpness test",
+      "bounding_box": [
+        278,
+        53,
+        398,
+        947
+      ],
+      "measurements": {
+        "mark_count": 15,
+        "area_pct": 20.456,
+        "largest_mark_pct": 5.262,
+        "median_mark_area_px": 914.0,
+        "median_elongation": 2.563,
+        "median_circularity": 0.153,
+        "isolation_ratio": 12.35,
+        "edge_sharpness": 0.694,
+        "chromatic_fraction": 0.798,
+        "shape_evidence": 1.0,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 345622,
+      "processing_time_ms": 183.65192413330078,
+      "overlay_path": "outputs\\overlays\\nitrile_stain_nitrile_stain_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_stain_nitrile_stain_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\stain\\nitrile_stain_2.jpeg",
+      "defect_name": "stain",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8285,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component geometry (area/elongation/circularity) + edge-sharpness test",
+      "bounding_box": [
+        340,
+        196,
+        272,
+        503
+      ],
+      "measurements": {
+        "mark_count": 21,
+        "area_pct": 8.848,
+        "largest_mark_pct": 1.053,
+        "median_mark_area_px": 363.0,
+        "median_elongation": 3.9,
+        "median_circularity": 0.414,
+        "isolation_ratio": 17.66,
+        "edge_sharpness": 0.91,
+        "chromatic_fraction": 0.921,
+        "shape_evidence": 0.8285,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 254036,
+      "processing_time_ms": 217.24390983581543,
+      "overlay_path": "outputs\\overlays\\nitrile_stain_nitrile_stain_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_stain_nitrile_stain_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\stain\\nitrile_stain_3.jpeg",
+      "defect_name": "stain",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8486,
+      "algorithm": "Illumination-normalised LAB anomaly + connected-component geometry (area/elongation/circularity) + edge-sharpness test",
+      "bounding_box": [
+        144,
+        116,
+        489,
+        884
+      ],
+      "measurements": {
+        "mark_count": 12,
+        "area_pct": 18.915,
+        "largest_mark_pct": 9.288,
+        "median_mark_area_px": 1001.0,
+        "median_elongation": 1.385,
+        "median_circularity": 0.24,
+        "isolation_ratio": 16.26,
+        "edge_sharpness": 0.627,
+        "chromatic_fraction": 0.625,
+        "shape_evidence": 0.8486,
+        "chromatic_confidence": 1.0
+      },
+      "glove_area": 327957,
+      "processing_time_ms": 198.89426231384277,
+      "overlay_path": "outputs\\overlays\\nitrile_stain_nitrile_stain_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_stain_nitrile_stain_3_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\tearing\\nitrile_tearing_1.jpg",
+      "defect_name": "tearing",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Largest connected LAB material-colour-deviation blob inside the eroded glove interior, cross-checked against Canny edges from gray_enhanced",
+      "bounding_box": [
+        320,
+        719,
+        271,
+        201
+      ],
+      "measurements": {
+        "area_pct": 10.986,
+        "hole_area_ratio": 0.10626
+      },
+      "glove_area": 252627,
+      "processing_time_ms": 105.39603233337402,
+      "overlay_path": "outputs\\overlays\\nitrile_tearing_nitrile_tearing_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_tearing_nitrile_tearing_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\tearing\\nitrile_tearing_2.jpg",
+      "defect_name": "tearing",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.8058344587321159,
+      "algorithm": "Largest connected LAB material-colour-deviation blob inside the eroded glove interior, cross-checked against Canny edges from gray_enhanced",
+      "bounding_box": [
+        272,
+        844,
+        232,
+        156
+      ],
+      "measurements": {
+        "area_pct": 7.499,
+        "hole_area_ratio": 0.07253
+      },
+      "glove_area": 227080,
+      "processing_time_ms": 85.18457412719727,
+      "overlay_path": "outputs\\overlays\\nitrile_tearing_nitrile_tearing_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_tearing_nitrile_tearing_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\tearing_fingertip\\nitrile_tearing_fingertip_1.jpg",
+      "defect_name": "tearing_fingertip",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks (convex protrusion + finger-length analysis); the torn finger itself is picked by ranking each finger's largest LAB material-colour-deviation blob (within its own tight ROI) by area ratio, unless every candidate's blob is still small relative to its ROI (a translucent material can show similar weak deviation on every fingertip), in which case ranking switches to a composite of boundary deviation strength, Canny edge density, and local gradient sharpness instead - a real tear has a sharp torn edge, translucency fades in gradually. For the winning finger only, the box/mask is then rebuilt from the full connected anomaly within a moderately dilated version of its ROI (closed to bridge small gaps), so it covers the tear's own full extent rather than a ROI-clipped fragment, then clipped to the glove silhouette and padded to a minimum size relative to the finger's own width",
+      "bounding_box": [
+        566,
+        572,
+        71,
+        68
+      ],
+      "measurements": {
+        "area_pct": 0.924,
+        "roi_area_ratio": 1.05862,
+        "fingertips_found": 4,
+        "flagged_finger_length_px": 74.8,
+        "flagged_finger_length_rank": 4
+      },
+      "glove_area": 168079,
+      "processing_time_ms": 243.84093284606934,
+      "overlay_path": "outputs\\overlays\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\tearing_fingertip\\nitrile_tearing_fingertip_2.jpg",
+      "defect_name": "tearing_fingertip",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks (convex protrusion + finger-length analysis); the torn finger itself is picked by ranking each finger's largest LAB material-colour-deviation blob (within its own tight ROI) by area ratio, unless every candidate's blob is still small relative to its ROI (a translucent material can show similar weak deviation on every fingertip), in which case ranking switches to a composite of boundary deviation strength, Canny edge density, and local gradient sharpness instead - a real tear has a sharp torn edge, translucency fades in gradually. For the winning finger only, the box/mask is then rebuilt from the full connected anomaly within a moderately dilated version of its ROI (closed to bridge small gaps), so it covers the tear's own full extent rather than a ROI-clipped fragment, then clipped to the glove silhouette and padded to a minimum size relative to the finger's own width",
+      "bounding_box": [
+        565,
+        655,
+        233,
+        220
+      ],
+      "measurements": {
+        "area_pct": 6.621,
+        "roi_area_ratio": 1.53222,
+        "fingertips_found": 2,
+        "flagged_finger_length_px": 132.4,
+        "flagged_finger_length_rank": 1
+      },
+      "glove_area": 141499,
+      "processing_time_ms": 328.51457595825195,
+      "overlay_path": "outputs\\overlays\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\tearing_fingertip\\nitrile_tearing_fingertip_3.jpg",
+      "defect_name": "tearing_fingertip",
+      "status": "success",
+      "detected": true,
+      "detection_score": 1.0,
+      "algorithm": "Fingertip localisation via contour distance-from-centroid peaks (convex protrusion + finger-length analysis); the torn finger itself is picked by ranking each finger's largest LAB material-colour-deviation blob (within its own tight ROI) by area ratio, unless every candidate's blob is still small relative to its ROI (a translucent material can show similar weak deviation on every fingertip), in which case ranking switches to a composite of boundary deviation strength, Canny edge density, and local gradient sharpness instead - a real tear has a sharp torn edge, translucency fades in gradually. For the winning finger only, the box/mask is then rebuilt from the full connected anomaly within a moderately dilated version of its ROI (closed to bridge small gaps), so it covers the tear's own full extent rather than a ROI-clipped fragment, then clipped to the glove silhouette and padded to a minimum size relative to the finger's own width",
+      "bounding_box": [
+        259,
+        355,
+        62,
+        101
+      ],
+      "measurements": {
+        "area_pct": 1.327,
+        "roi_area_ratio": 1.21143,
+        "fingertips_found": 4,
+        "flagged_finger_length_px": 86.8,
+        "flagged_finger_length_rank": 3
+      },
+      "glove_area": 196530,
+      "processing_time_ms": 269.20342445373535,
+      "overlay_path": "outputs\\overlays\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_3_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_3_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\touching\\nitrile_touching_1.png",
+      "defect_name": "touching",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.9220327314687726,
+      "algorithm": "Hybrid masked-glove geometry: missing interdigital valley plus an adaptive-edge internal seam with two-sided material and merged-finger width",
+      "bounding_box": [
+        286,
+        472,
+        145,
+        150
+      ],
+      "measurements": {
+        "area_pct": 2.878,
+        "deep_finger_gap_count": 3,
+        "missing_gap_count": 1,
+        "upper_edge_density": 0.07,
+        "canny_low": 24,
+        "canny_high": 53,
+        "seam_candidates": 19,
+        "adjusted_seam_score": 0.8187,
+        "texture_penalty": 0.0,
+        "textured_glove": false,
+        "texture_localisation_ok": true,
+        "merged_width_ratio": 1.4074,
+        "decision_path": "one_missing_gap_plus_seam",
+        "seam_length_ratio": 0.2605,
+        "seam_verticality": 0.7217,
+        "seam_continuity": 0.7419,
+        "seam_prominence": 0.2381,
+        "seam_side_support": 1.0,
+        "boundary_distance_px": 35.98
+      },
+      "glove_area": 185893,
+      "processing_time_ms": 176.19991302490234,
+      "overlay_path": "outputs\\overlays\\nitrile_touching_nitrile_touching_1_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_touching_nitrile_touching_1_mask.png",
+      "error": null,
+      "material": "nitrile"
+    },
+    {
+      "image_path": "datasets\\nitrile\\touching\\nitrile_touching_2.png",
+      "defect_name": "touching",
+      "status": "success",
+      "detected": true,
+      "detection_score": 0.7805014053993187,
+      "algorithm": "Hybrid masked-glove geometry: missing interdigital valley plus an adaptive-edge internal seam with two-sided material and merged-finger width",
+      "bounding_box": [
+        165,
+        376,
+        72,
+        131
+      ],
+      "measurements": {
+        "area_pct": 2.019,
+        "deep_finger_gap_count": 2,
+        "missing_gap_count": 2,
+        "upper_edge_density": 0.0708,
+        "canny_low": 21,
+        "canny_high": 49,
+        "seam_candidates": 10,
+        "adjusted_seam_score": 0.9095,
+        "texture_penalty": 0.0,
+        "textured_glove": false,
+        "texture_localisation_ok": true,
+        "merged_width_ratio": 1.9534,
+        "decision_path": "very_strong_seam",
+        "seam_length_ratio": 0.1694,
+        "seam_verticality": 0.9196,
+        "seam_continuity": 1.0,
+        "seam_prominence": 1.0,
+        "seam_side_support": 1.0,
+        "boundary_distance_px": 55.0
+      },
+      "glove_area": 188720,
+      "processing_time_ms": 183.31575393676758,
+      "overlay_path": "outputs\\overlays\\nitrile_touching_nitrile_touching_2_overlay.jpg",
+      "mask_path": "outputs\\masks\\nitrile_touching_nitrile_touching_2_mask.png",
+      "error": null,
+      "material": "nitrile"
+    }
+  ]
+}
