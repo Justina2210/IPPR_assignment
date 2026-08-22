@@ -42,7 +42,7 @@
         "localisation_shift_y_px": -33
       },
       "glove_area": 237795,
-      "processing_time_ms": 546.3621616363525,
+      "processing_time_ms": 544.6350574493408,
       "overlay_path": "outputs\\overlays\\cotton_damaged_by_fold_cotton_damaged_by_fold_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_damaged_by_fold_cotton_damaged_by_fold_1_mask.png",
       "error": null,
@@ -88,7 +88,7 @@
         "localisation_shift_y_px": 0
       },
       "glove_area": 195769,
-      "processing_time_ms": 409.0771675109863,
+      "processing_time_ms": 378.7834644317627,
       "overlay_path": "outputs\\overlays\\cotton_damaged_by_fold_cotton_damaged_by_fold_2_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_damaged_by_fold_cotton_damaged_by_fold_2_mask.png",
       "error": null,
@@ -120,7 +120,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 417819,
-      "processing_time_ms": 227.28848457336426,
+      "processing_time_ms": 207.31639862060547,
       "overlay_path": "outputs\\overlays\\cotton_dirty_cotton_dirty_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_dirty_cotton_dirty_1_mask.png",
       "error": null,
@@ -152,7 +152,7 @@
         "chromatic_confidence": 0.916
       },
       "glove_area": 385162,
-      "processing_time_ms": 213.69147300720215,
+      "processing_time_ms": 177.56938934326172,
       "overlay_path": "outputs\\overlays\\cotton_dirty_cotton_dirty_2_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_dirty_cotton_dirty_2_mask.png",
       "error": null,
@@ -184,7 +184,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 461164,
-      "processing_time_ms": 263.73863220214844,
+      "processing_time_ms": 244.7962760925293,
       "overlay_path": "outputs\\overlays\\cotton_dirty_cotton_dirty_3_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_dirty_cotton_dirty_3_mask.png",
       "error": null,
@@ -213,7 +213,7 @@
         "localization": "gap"
       },
       "glove_area": 308934,
-      "processing_time_ms": 112.24102973937988,
+      "processing_time_ms": 107.23614692687988,
       "overlay_path": "outputs\\overlays\\cotton_finger_not_enough_cotton_finger_not_enough_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_finger_not_enough_cotton_finger_not_enough_1_mask.png",
       "error": null,
@@ -242,7 +242,7 @@
         "localization": "gap"
       },
       "glove_area": 282451,
-      "processing_time_ms": 78.19747924804688,
+      "processing_time_ms": 72.72958755493164,
       "overlay_path": "outputs\\overlays\\cotton_finger_not_enough_cotton_finger_not_enough_2_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_finger_not_enough_cotton_finger_not_enough_2_mask.png",
       "error": null,
@@ -277,7 +277,7 @@
         "baseline_intercept": 869.42
       },
       "glove_area": 173357,
-      "processing_time_ms": 75.7741928100586,
+      "processing_time_ms": 65.89031219482422,
       "overlay_path": "outputs\\overlays\\cotton_incomplete_beading_cotton_incomplete_beading_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_incomplete_beading_cotton_incomplete_beading_1_mask.png",
       "error": null,
@@ -405,7 +405,7 @@
         "fold_bulk_score": 0.0
       },
       "glove_area": 248734,
-      "processing_time_ms": 105.5917739868164,
+      "processing_time_ms": 95.99709510803223,
       "overlay_path": "outputs\\overlays\\cotton_oversize_cotton_oversize_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_oversize_cotton_oversize_1_mask.png",
       "error": null,
@@ -533,7 +533,7 @@
         "fold_bulk_score": 0.0
       },
       "glove_area": 237457,
-      "processing_time_ms": 115.27562141418457,
+      "processing_time_ms": 106.58526420593262,
       "overlay_path": "outputs\\overlays\\cotton_oversize_cotton_oversize_2_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_oversize_cotton_oversize_2_mask.png",
       "error": null,
@@ -570,7 +570,7 @@
         "cotton_v4_mean_score": 0.775
       },
       "glove_area": 326247,
-      "processing_time_ms": 333.3005905151367,
+      "processing_time_ms": 288.34033012390137,
       "overlay_path": "outputs\\overlays\\cotton_plastic_contamination_cotton_plastic_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_plastic_contamination_cotton_plastic_1_mask.png",
       "error": null,
@@ -607,7 +607,7 @@
         "cotton_v4_mean_score": 0.765
       },
       "glove_area": 391707,
-      "processing_time_ms": 356.555700302124,
+      "processing_time_ms": 313.35949897766113,
       "overlay_path": "outputs\\overlays\\cotton_plastic_contamination_cotton_plastic_2_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_plastic_contamination_cotton_plastic_2_mask.png",
       "error": null,
@@ -644,7 +644,7 @@
         "cotton_v4_mean_score": 0.724
       },
       "glove_area": 324691,
-      "processing_time_ms": 412.9009246826172,
+      "processing_time_ms": 406.4311981201172,
       "overlay_path": "outputs\\overlays\\cotton_plastic_contamination_cotton_plastic_3_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_plastic_contamination_cotton_plastic_3_mask.png",
       "error": null,
@@ -668,7 +668,7 @@
         "hole_area_ratio": 0.10745
       },
       "glove_area": 175889,
-      "processing_time_ms": 87.02659606933594,
+      "processing_time_ms": 94.8641300201416,
       "overlay_path": "outputs\\overlays\\cotton_tearing_cotton_tearing_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_tearing_cotton_tearing_1_mask.png",
       "error": null,
@@ -695,7 +695,7 @@
         "flagged_finger_length_rank": 3
       },
       "glove_area": 203952,
-      "processing_time_ms": 182.53302574157715,
+      "processing_time_ms": 179.0175437927246,
       "overlay_path": "outputs\\overlays\\cotton_tearing_fingertip_cotton_tearing_fingertip_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_tearing_fingertip_cotton_tearing_fingertip_1_mask.png",
       "error": null,
@@ -722,7 +722,7 @@
         "flagged_finger_length_rank": 4
       },
       "glove_area": 205449,
-      "processing_time_ms": 182.27791786193848,
+      "processing_time_ms": 174.02982711791992,
       "overlay_path": "outputs\\overlays\\cotton_tearing_fingertip_cotton_tearing_fingertip_2_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_tearing_fingertip_cotton_tearing_fingertip_2_mask.png",
       "error": null,
@@ -763,7 +763,7 @@
         "boundary_distance_px": 54.0
       },
       "glove_area": 204847,
-      "processing_time_ms": 260.7569694519043,
+      "processing_time_ms": 220.7775115966797,
       "overlay_path": "outputs\\overlays\\cotton_touching_cotton_touching_1_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_touching_cotton_touching_1_mask.png",
       "error": null,
@@ -804,7 +804,7 @@
         "boundary_distance_px": 60.35
       },
       "glove_area": 227873,
-      "processing_time_ms": 180.01675605773926,
+      "processing_time_ms": 166.86081886291504,
       "overlay_path": "outputs\\overlays\\cotton_touching_cotton_touching_2_overlay.jpg",
       "mask_path": "outputs\\masks\\cotton_touching_cotton_touching_2_mask.png",
       "error": null,
@@ -850,7 +850,7 @@
         "localisation_shift_y_px": 0
       },
       "glove_area": 203785,
-      "processing_time_ms": 124.50146675109863,
+      "processing_time_ms": 120.22662162780762,
       "overlay_path": "outputs\\overlays\\latex_damaged_by_fold_latex_damaged_by_fold_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_damaged_by_fold_latex_damaged_by_fold_1_mask.png",
       "error": null,
@@ -896,7 +896,7 @@
         "localisation_shift_y_px": 0
       },
       "glove_area": 237336,
-      "processing_time_ms": 227.0517349243164,
+      "processing_time_ms": 215.47985076904297,
       "overlay_path": "outputs\\overlays\\latex_damaged_by_fold_latex_damaged_by_fold_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_damaged_by_fold_latex_damaged_by_fold_2_mask.png",
       "error": null,
@@ -928,7 +928,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 480120,
-      "processing_time_ms": 176.95188522338867,
+      "processing_time_ms": 178.6329746246338,
       "overlay_path": "outputs\\overlays\\latex_dirty_latex_dirty_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_dirty_latex_dirty_1_mask.png",
       "error": null,
@@ -960,7 +960,7 @@
         "chromatic_confidence": 0.891
       },
       "glove_area": 435547,
-      "processing_time_ms": 179.6705722808838,
+      "processing_time_ms": 179.1679859161377,
       "overlay_path": "outputs\\overlays\\latex_dirty_latex_dirty_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_dirty_latex_dirty_2_mask.png",
       "error": null,
@@ -992,7 +992,7 @@
         "chromatic_confidence": 0.846
       },
       "glove_area": 409284,
-      "processing_time_ms": 179.7318458557129,
+      "processing_time_ms": 181.26440048217773,
       "overlay_path": "outputs\\overlays\\latex_dirty_latex_dirty_3_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_dirty_latex_dirty_3_mask.png",
       "error": null,
@@ -1026,7 +1026,7 @@
         "shape_score": 1.0
       },
       "glove_area": 318458,
-      "processing_time_ms": 130.0485134124756,
+      "processing_time_ms": 118.11351776123047,
       "overlay_path": "outputs\\overlays\\latex_discoloration_latex_discoloration_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_discoloration_latex_discoloration_1_mask.png",
       "error": null,
@@ -1060,7 +1060,7 @@
         "shape_score": 1.0
       },
       "glove_area": 294095,
-      "processing_time_ms": 98.54555130004883,
+      "processing_time_ms": 93.53280067443848,
       "overlay_path": "outputs\\overlays\\latex_discoloration_latex_discoloration_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_discoloration_latex_discoloration_2_mask.png",
       "error": null,
@@ -1089,7 +1089,7 @@
         "localization": "gap"
       },
       "glove_area": 236164,
-      "processing_time_ms": 74.6152400970459,
+      "processing_time_ms": 69.45514678955078,
       "overlay_path": "outputs\\overlays\\latex_finger_not_enough_latex_finger_not_enough_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_finger_not_enough_latex_finger_not_enough_1_mask.png",
       "error": null,
@@ -1124,7 +1124,7 @@
         "baseline_intercept": 1008.17
       },
       "glove_area": 210818,
-      "processing_time_ms": 58.634042739868164,
+      "processing_time_ms": 57.70611763000488,
       "overlay_path": "outputs\\overlays\\latex_incomplete_beading_latex_incomplete_beading_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_incomplete_beading_latex_incomplete_beading_1_mask.png",
       "error": null,
@@ -1159,7 +1159,7 @@
         "baseline_intercept": 999.0
       },
       "glove_area": 216905,
-      "processing_time_ms": 57.929277420043945,
+      "processing_time_ms": 58.838605880737305,
       "overlay_path": "outputs\\overlays\\latex_incomplete_beading_latex_incomplete_beading_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_incomplete_beading_latex_incomplete_beading_2_mask.png",
       "error": null,
@@ -1281,7 +1281,7 @@
         "fold_bulk_score": 0.185
       },
       "glove_area": 248483,
-      "processing_time_ms": 93.02997589111328,
+      "processing_time_ms": 87.87727355957031,
       "overlay_path": "outputs\\overlays\\latex_oversize_latex_oversize_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_oversize_latex_oversize_1_mask.png",
       "error": null,
@@ -1403,7 +1403,7 @@
         "fold_bulk_score": 0.688
       },
       "glove_area": 306370,
-      "processing_time_ms": 108.40439796447754,
+      "processing_time_ms": 100.56853294372559,
       "overlay_path": "outputs\\overlays\\latex_oversize_latex_oversize_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_oversize_latex_oversize_2_mask.png",
       "error": null,
@@ -1438,7 +1438,7 @@
         "object_completion": 1.0
       },
       "glove_area": 301103,
-      "processing_time_ms": 219.35701370239258,
+      "processing_time_ms": 186.7375373840332,
       "overlay_path": "outputs\\overlays\\latex_plastic_contamination_latex_plastic_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_plastic_contamination_latex_plastic_1_mask.png",
       "error": null,
@@ -1473,7 +1473,7 @@
         "object_completion": 1.0
       },
       "glove_area": 293488,
-      "processing_time_ms": 256.1964988708496,
+      "processing_time_ms": 193.12477111816406,
       "overlay_path": "outputs\\overlays\\latex_plastic_contamination_latex_plastic_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_plastic_contamination_latex_plastic_2_mask.png",
       "error": null,
@@ -1506,7 +1506,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 257663,
-      "processing_time_ms": 205.55806159973145,
+      "processing_time_ms": 175.2636432647705,
       "overlay_path": "outputs\\overlays\\latex_spotting_latex_spotting_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_spotting_latex_spotting_1_mask.png",
       "error": null,
@@ -1539,7 +1539,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 266060,
-      "processing_time_ms": 169.07477378845215,
+      "processing_time_ms": 154.87122535705566,
       "overlay_path": "outputs\\overlays\\latex_spotting_latex_spotting_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_spotting_latex_spotting_2_mask.png",
       "error": null,
@@ -1572,7 +1572,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 251111,
-      "processing_time_ms": 180.9840202331543,
+      "processing_time_ms": 171.48780822753906,
       "overlay_path": "outputs\\overlays\\latex_spotting_latex_spotting_3_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_spotting_latex_spotting_3_mask.png",
       "error": null,
@@ -1605,7 +1605,7 @@
         "chromatic_confidence": 0.785
       },
       "glove_area": 341122,
-      "processing_time_ms": 164.24298286437988,
+      "processing_time_ms": 160.05301475524902,
       "overlay_path": "outputs\\overlays\\latex_stain_latex_stain_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_stain_latex_stain_1_mask.png",
       "error": null,
@@ -1638,7 +1638,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 442464,
-      "processing_time_ms": 160.42494773864746,
+      "processing_time_ms": 149.86467361450195,
       "overlay_path": "outputs\\overlays\\latex_stain_latex_stain_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_stain_latex_stain_2_mask.png",
       "error": null,
@@ -1662,7 +1662,7 @@
         "hole_area_ratio": 0.06357
       },
       "glove_area": 202995,
-      "processing_time_ms": 85.96634864807129,
+      "processing_time_ms": 82.68022537231445,
       "overlay_path": "outputs\\overlays\\latex_tearing_latex_tearing_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_tearing_latex_tearing_1_mask.png",
       "error": null,
@@ -1686,7 +1686,7 @@
         "hole_area_ratio": 0.07215
       },
       "glove_area": 216101,
-      "processing_time_ms": 75.43110847473145,
+      "processing_time_ms": 72.35074043273926,
       "overlay_path": "outputs\\overlays\\latex_tearing_latex_tearing_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_tearing_latex_tearing_2_mask.png",
       "error": null,
@@ -1713,7 +1713,7 @@
         "flagged_finger_length_rank": 2
       },
       "glove_area": 178933,
-      "processing_time_ms": 282.5796604156494,
+      "processing_time_ms": 251.05810165405273,
       "overlay_path": "outputs\\overlays\\latex_tearing_fingertip_latex_tearing_fingertip_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_tearing_fingertip_latex_tearing_fingertip_1_mask.png",
       "error": null,
@@ -1754,7 +1754,7 @@
         "boundary_distance_px": 44.58
       },
       "glove_area": 215175,
-      "processing_time_ms": 138.31734657287598,
+      "processing_time_ms": 130.25760650634766,
       "overlay_path": "outputs\\overlays\\latex_touching_latex_touching_1_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_touching_latex_touching_1_mask.png",
       "error": null,
@@ -1795,7 +1795,7 @@
         "boundary_distance_px": 59.0
       },
       "glove_area": 229776,
-      "processing_time_ms": 197.523832321167,
+      "processing_time_ms": 172.28317260742188,
       "overlay_path": "outputs\\overlays\\latex_touching_latex_touching_2_overlay.jpg",
       "mask_path": "outputs\\masks\\latex_touching_latex_touching_2_mask.png",
       "error": null,
@@ -1841,7 +1841,7 @@
         "localisation_shift_y_px": 0
       },
       "glove_area": 219812,
-      "processing_time_ms": 167.03557968139648,
+      "processing_time_ms": 158.36238861083984,
       "overlay_path": "outputs\\overlays\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_1_mask.png",
       "error": null,
@@ -1887,7 +1887,7 @@
         "localisation_shift_y_px": 0
       },
       "glove_area": 192800,
-      "processing_time_ms": 114.20750617980957,
+      "processing_time_ms": 92.92912483215332,
       "overlay_path": "outputs\\overlays\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_damaged_by_fold_nitrile_damaged_by_fold_2_mask.png",
       "error": null,
@@ -1921,7 +1921,7 @@
         "shape_score": 0.878
       },
       "glove_area": 310462,
-      "processing_time_ms": 140.00320434570312,
+      "processing_time_ms": 120.98932266235352,
       "overlay_path": "outputs\\overlays\\nitrile_discoloration_nitrile_discoloration_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_discoloration_nitrile_discoloration_1_mask.png",
       "error": null,
@@ -1955,7 +1955,7 @@
         "shape_score": 0.96
       },
       "glove_area": 316459,
-      "processing_time_ms": 144.2394256591797,
+      "processing_time_ms": 115.39912223815918,
       "overlay_path": "outputs\\overlays\\nitrile_discoloration_nitrile_discoloration_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_discoloration_nitrile_discoloration_2_mask.png",
       "error": null,
@@ -1989,7 +1989,7 @@
         "shape_score": 0.968
       },
       "glove_area": 353337,
-      "processing_time_ms": 123.97336959838867,
+      "processing_time_ms": 108.59203338623047,
       "overlay_path": "outputs\\overlays\\nitrile_discoloration_nitrile_discoloration_3_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_discoloration_nitrile_discoloration_3_mask.png",
       "error": null,
@@ -2018,7 +2018,7 @@
         "localization": "gap"
       },
       "glove_area": 275647,
-      "processing_time_ms": 88.84787559509277,
+      "processing_time_ms": 75.16074180603027,
       "overlay_path": "outputs\\overlays\\nitrile_finger_not_enough_nitrile_finger_not_enough_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_finger_not_enough_nitrile_finger_not_enough_1_mask.png",
       "error": null,
@@ -2047,7 +2047,7 @@
         "localization": "gap"
       },
       "glove_area": 252343,
-      "processing_time_ms": 70.11294364929199,
+      "processing_time_ms": 63.00044059753418,
       "overlay_path": "outputs\\overlays\\nitrile_finger_not_enough_nitrile_finger_not_enough_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_finger_not_enough_nitrile_finger_not_enough_2_mask.png",
       "error": null,
@@ -2082,7 +2082,7 @@
         "baseline_intercept": 1005.48
       },
       "glove_area": 207602,
-      "processing_time_ms": 66.1160945892334,
+      "processing_time_ms": 100.4641056060791,
       "overlay_path": "outputs\\overlays\\nitrile_incomplete_beading_nitrile_incomplete_beading_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_incomplete_beading_nitrile_incomplete_beading_1_mask.png",
       "error": null,
@@ -2117,7 +2117,7 @@
         "baseline_intercept": 999.03
       },
       "glove_area": 253779,
-      "processing_time_ms": 64.33844566345215,
+      "processing_time_ms": 64.03779983520508,
       "overlay_path": "outputs\\overlays\\nitrile_incomplete_beading_nitrile_incomplete_beading_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_incomplete_beading_nitrile_incomplete_beading_2_mask.png",
       "error": null,
@@ -2239,7 +2239,7 @@
         "fold_bulk_score": 0.429
       },
       "glove_area": 156416,
-      "processing_time_ms": 111.39869689941406,
+      "processing_time_ms": 102.52618789672852,
       "overlay_path": "outputs\\overlays\\nitrile_oversize_nitrile_oversize_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_oversize_nitrile_oversize_1_mask.png",
       "error": null,
@@ -2361,7 +2361,7 @@
         "fold_bulk_score": 0.802
       },
       "glove_area": 312077,
-      "processing_time_ms": 111.55486106872559,
+      "processing_time_ms": 99.74145889282227,
       "overlay_path": "outputs\\overlays\\nitrile_oversize_nitrile_oversize_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_oversize_nitrile_oversize_2_mask.png",
       "error": null,
@@ -2398,7 +2398,7 @@
         "object_completion": 1.0
       },
       "glove_area": 291918,
-      "processing_time_ms": 218.19496154785156,
+      "processing_time_ms": 185.66107749938965,
       "overlay_path": "outputs\\overlays\\nitrile_plastic_contamination_nitrile_plastic_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_plastic_contamination_nitrile_plastic_1_mask.png",
       "error": null,
@@ -2435,7 +2435,7 @@
         "object_completion": 1.0
       },
       "glove_area": 336375,
-      "processing_time_ms": 259.94420051574707,
+      "processing_time_ms": 213.88506889343262,
       "overlay_path": "outputs\\overlays\\nitrile_plastic_contamination_nitrile_plastic_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_plastic_contamination_nitrile_plastic_2_mask.png",
       "error": null,
@@ -2468,7 +2468,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 219380,
-      "processing_time_ms": 244.4148063659668,
+      "processing_time_ms": 198.55213165283203,
       "overlay_path": "outputs\\overlays\\nitrile_spotting_nitrile_spotting_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_spotting_nitrile_spotting_1_mask.png",
       "error": null,
@@ -2501,7 +2501,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 221962,
-      "processing_time_ms": 237.61320114135742,
+      "processing_time_ms": 194.1699981689453,
       "overlay_path": "outputs\\overlays\\nitrile_spotting_nitrile_spotting_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_spotting_nitrile_spotting_2_mask.png",
       "error": null,
@@ -2534,7 +2534,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 241415,
-      "processing_time_ms": 261.59191131591797,
+      "processing_time_ms": 199.49936866760254,
       "overlay_path": "outputs\\overlays\\nitrile_spotting_nitrile_spotting_3_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_spotting_nitrile_spotting_3_mask.png",
       "error": null,
@@ -2567,7 +2567,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 345622,
-      "processing_time_ms": 183.65192413330078,
+      "processing_time_ms": 163.49411010742188,
       "overlay_path": "outputs\\overlays\\nitrile_stain_nitrile_stain_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_stain_nitrile_stain_1_mask.png",
       "error": null,
@@ -2600,7 +2600,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 254036,
-      "processing_time_ms": 217.24390983581543,
+      "processing_time_ms": 183.56871604919434,
       "overlay_path": "outputs\\overlays\\nitrile_stain_nitrile_stain_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_stain_nitrile_stain_2_mask.png",
       "error": null,
@@ -2633,7 +2633,7 @@
         "chromatic_confidence": 1.0
       },
       "glove_area": 327957,
-      "processing_time_ms": 198.89426231384277,
+      "processing_time_ms": 175.37212371826172,
       "overlay_path": "outputs\\overlays\\nitrile_stain_nitrile_stain_3_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_stain_nitrile_stain_3_mask.png",
       "error": null,
@@ -2657,7 +2657,7 @@
         "hole_area_ratio": 0.10626
       },
       "glove_area": 252627,
-      "processing_time_ms": 105.39603233337402,
+      "processing_time_ms": 82.03959465026855,
       "overlay_path": "outputs\\overlays\\nitrile_tearing_nitrile_tearing_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_tearing_nitrile_tearing_1_mask.png",
       "error": null,
@@ -2681,7 +2681,7 @@
         "hole_area_ratio": 0.07253
       },
       "glove_area": 227080,
-      "processing_time_ms": 85.18457412719727,
+      "processing_time_ms": 76.17044448852539,
       "overlay_path": "outputs\\overlays\\nitrile_tearing_nitrile_tearing_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_tearing_nitrile_tearing_2_mask.png",
       "error": null,
@@ -2708,7 +2708,7 @@
         "flagged_finger_length_rank": 4
       },
       "glove_area": 168079,
-      "processing_time_ms": 243.84093284606934,
+      "processing_time_ms": 279.24275398254395,
       "overlay_path": "outputs\\overlays\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_1_mask.png",
       "error": null,
@@ -2735,7 +2735,7 @@
         "flagged_finger_length_rank": 1
       },
       "glove_area": 141499,
-      "processing_time_ms": 328.51457595825195,
+      "processing_time_ms": 496.78945541381836,
       "overlay_path": "outputs\\overlays\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_2_mask.png",
       "error": null,
@@ -2762,7 +2762,7 @@
         "flagged_finger_length_rank": 3
       },
       "glove_area": 196530,
-      "processing_time_ms": 269.20342445373535,
+      "processing_time_ms": 394.9761390686035,
       "overlay_path": "outputs\\overlays\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_3_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_tearing_fingertip_nitrile_tearing_fingertip_3_mask.png",
       "error": null,
@@ -2803,7 +2803,7 @@
         "boundary_distance_px": 35.98
       },
       "glove_area": 185893,
-      "processing_time_ms": 176.19991302490234,
+      "processing_time_ms": 286.4809036254883,
       "overlay_path": "outputs\\overlays\\nitrile_touching_nitrile_touching_1_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_touching_nitrile_touching_1_mask.png",
       "error": null,
@@ -2844,7 +2844,7 @@
         "boundary_distance_px": 55.0
       },
       "glove_area": 188720,
-      "processing_time_ms": 183.31575393676758,
+      "processing_time_ms": 297.6343631744385,
       "overlay_path": "outputs\\overlays\\nitrile_touching_nitrile_touching_2_overlay.jpg",
       "mask_path": "outputs\\masks\\nitrile_touching_nitrile_touching_2_mask.png",
       "error": null,

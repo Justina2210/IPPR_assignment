@@ -35,8 +35,6 @@ import io
 import os
 import time
 import traceback
-import tempfile
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -194,18 +192,6 @@ def implemented_detectors():
     """Which DETECTOR_REGISTRY entries actually import successfully right now."""
     working = sorted(name for name in DETECTOR_REGISTRY if load_detector(name) is not None)
     return working, len(DETECTOR_REGISTRY)
-
-
-def save_uploaded_file(uploaded_file):
-    """
-    The pipeline takes a file path (load_image() is cv2.imread under the
-    hood), so an uploaded in-memory file has to be written to disk first.
-    """
-    suffix = Path(uploaded_file.name).suffix or ".jpg"
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    tmp.write(uploaded_file.getbuffer())
-    tmp.close()
-    return tmp.name
 
 
 # ============================================================
@@ -488,7 +474,7 @@ with st.container(border=True, key="step2card"):
 
 material = st.session_state.material
 defect = st.session_state.defect
-image_path, uploaded_file, display_name = None, None, None
+image_path, display_name = None, None
 run_clicked = False
 
 with st.container(border=True, key="step3card"):
@@ -496,33 +482,20 @@ with st.container(border=True, key="step3card"):
     if step3_dim:
         st.markdown('<div class="step-hint">Choose a defect first.</div>', unsafe_allow_html=True)
     else:
-        image_source = st.radio(
-            "Image source", ["Sample from dataset", "Upload my own"],
-            horizontal=True, label_visibility="collapsed",
-        )
-
-        if image_source == "Sample from dataset":
-            images = list_images(material, defect)
-            if not images:
-                st.warning(f"No images found in `{DATASET_ROOT}/{material}/{defect}/`.")
-            else:
-                chosen = st.selectbox("Image file", images, label_visibility="collapsed")
-                image_path = os.path.join(DATASET_ROOT, material, defect, chosen)
-                display_name = chosen
-                _, preview_col, _ = st.columns([1, 2, 1])
-                with preview_col:
-                    st.image(image_path, caption=chosen, width=240)
+        images = list_images(material, defect)
+        if not images:
+            st.warning(f"No images found in `{DATASET_ROOT}/{material}/{defect}/`.")
         else:
-            uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png", "bmp"])
-            if uploaded_file is not None:
-                display_name = uploaded_file.name
-                _, preview_col, _ = st.columns([1, 2, 1])
-                with preview_col:
-                    st.image(uploaded_file, caption=uploaded_file.name, width=240)
+            chosen = st.selectbox("Image file", images, label_visibility="collapsed")
+            image_path = os.path.join(DATASET_ROOT, material, defect, chosen)
+            display_name = chosen
+            _, preview_col, _ = st.columns([1, 2, 1])
+            with preview_col:
+                st.image(image_path, caption=chosen, width=240)
 
         run_clicked = st.button(
             "Run detection", type="primary", use_container_width=True,
-            disabled=(image_path is None and uploaded_file is None),
+            disabled=(image_path is None),
         )
 
 
@@ -531,16 +504,8 @@ with st.container(border=True, key="step3card"):
 # ============================================================
 
 if run_clicked:
-    run_path = save_uploaded_file(uploaded_file) if uploaded_file is not None else image_path
-
     with st.spinner("Running preprocessing -> segmentation -> detector..."):
-        record, original_bgr, processed, segmentation = run_pipeline(run_path, defect)
-
-    if uploaded_file is not None:
-        try:
-            os.remove(run_path)
-        except OSError:
-            pass
+        record, original_bgr, processed, segmentation = run_pipeline(image_path, defect)
 
     st.session_state["last_record"] = record
     st.session_state["last_original"] = original_bgr
