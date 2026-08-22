@@ -58,7 +58,14 @@ SEGMENTATION_ALGORITHMS = [
     "Geometric plateau detection + colour-confirmed cuff/forearm removal",
 ]
 
-st.set_page_config(page_title="Glove Defect Detection", layout="centered")
+st.set_page_config(page_title="Glove Defect Detection", layout="wide")
+
+st.markdown("""
+<style>
+.block-container { max-width: 1100px !important; margin-left: auto !important; margin-right: auto !important; }
+html, body, [class*="css"] { font-size: 17px; }
+</style>
+""", unsafe_allow_html=True)
 
 
 # ============================================================
@@ -501,12 +508,16 @@ with st.container(border=True, key="step3card"):
                 chosen = st.selectbox("Image file", images, label_visibility="collapsed")
                 image_path = os.path.join(DATASET_ROOT, material, defect, chosen)
                 display_name = chosen
-                st.image(image_path, caption=chosen, width=240)
+                _, preview_col, _ = st.columns([1, 2, 1])
+                with preview_col:
+                    st.image(image_path, caption=chosen, width=240)
         else:
             uploaded_file = st.file_uploader("Upload image", type=["jpg", "jpeg", "png", "bmp"])
             if uploaded_file is not None:
                 display_name = uploaded_file.name
-                st.image(uploaded_file, caption=uploaded_file.name, width=240)
+                _, preview_col, _ = st.columns([1, 2, 1])
+                with preview_col:
+                    st.image(uploaded_file, caption=uploaded_file.name, width=240)
 
         run_clicked = st.button(
             "Run detection", type="primary", use_container_width=True,
