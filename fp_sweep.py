@@ -1,39 +1,3 @@
-"""
-fp_sweep.py
------------
-False-positive sweep for the Glove Defect Detection System.
-
-evaluate.py's own run only ever tests a detector against the ONE
-folder matching its name (each labelled image is only ever tested
-against its own matching detector - see evaluate.py's closing
-docstring), so it has no false-positive metric. This script fills that
-gap: for a given detector, it runs that detector against every image
-whose folder is NOT its own defect, using the exact same detector-
-loading path and detected/threshold rule evaluate.py uses, so the
-numbers here are directly comparable to evaluate.py's output.
-
-Does not modify evaluate.py or any detector - it only imports from
-evaluate.py, preprocessing.py and segmentation.py.
-
-Usage
------
-    python fp_sweep.py tearing              # one detector
-    python fp_sweep.py tearing_fingertip
-    python fp_sweep.py finger_not_enough
-    python fp_sweep.py all                  # every implemented detector
-
-Works for any detector name in evaluate.DETECTOR_REGISTRY, not just
-the three currently implemented ones - a teammate's newly registered
-detector is picked up automatically once it imports successfully.
-
-Output
-------
-Prints, per detector: how many non-matching images were tested, the
-false-positive count, and the list of wrongly-flagged files with their
-scores. Also writes every tested (detector, image) pair to
-outputs/fp_sweep.csv.
-"""
-
 import argparse
 import csv
 import os
@@ -55,24 +19,13 @@ from segmentation import segment_glove
 FP_SWEEP_CSV = os.path.join(OUTPUT_ROOT, "fp_sweep.csv")
 
 
-# ============================================================
-# DETECTOR SELECTION
-# ============================================================
-
 def implemented_detectors():
     """Every DETECTOR_REGISTRY entry that currently imports successfully."""
     return sorted(name for name in DETECTOR_REGISTRY if load_detector(name) is not None)
 
 
 def resolve_targets(requested):
-    """
-    Turn the command-line argument into a list of defect names to sweep.
-
-    "all" -> every currently-implemented detector.
-    A specific name -> that one, if it's registered and importable
-    (fails loudly and clearly otherwise, rather than silently skipping
-    it the way evaluate.py's own loader does for a whole-dataset run).
-    """
+    """Turn the CLI argument into a list of defect names to sweep; 'all' = every implemented detector, a specific name fails loudly if unregistered/unimportable."""
     if requested == "all":
         targets = implemented_detectors()
         if not targets:
@@ -89,17 +42,8 @@ def resolve_targets(requested):
     return [requested]
 
 
-# ============================================================
-# PREPROCESS/SEGMENT CACHE
-# ============================================================
-
 def build_image_cache(images):
-    """
-    Preprocessing + segmentation is identical no matter which detector
-    runs next, so it's computed once per image here and reused for
-    every detector in this sweep, instead of redoing it once per
-    detector (mirrors app.py's run_full_evaluation()).
-    """
+    """Preprocess+segment once per image and reuse across every detector in the sweep (mirrors app.py's run_full_evaluation())."""
     cache = {}
     for material, defect_folder, image_path in images:
         try:
@@ -113,19 +57,8 @@ def build_image_cache(images):
     return cache
 
 
-# ============================================================
-# SWEEP
-# ============================================================
-
 def sweep_one_detector(defect_name, other_images, cache):
-    """
-    Run `defect_name`'s detector against every image in other_images
-    (all images whose own folder label is NOT defect_name), using the
-    same detected/threshold rule as evaluate.evaluate_image():
-        detected = bool(result["detected"]) and result["detection_score"] >= DETECTION_THRESHOLD
-
-    Returns a list of per-image record dicts (one per image tested).
-    """
+    """Run defect_name's detector against every image in other_images using evaluate.py's detected/threshold rule; returns one record per image."""
     detector_func = load_detector(defect_name)
     records = []
 
@@ -172,16 +105,8 @@ def sweep_one_detector(defect_name, other_images, cache):
     return records
 
 
-# ============================================================
-# REPORTING
-# ============================================================
-
 def print_report(defect_name, records):
-    # This script's own denominator: only images the detector actually
-    # RAN on successfully. Any segmentation_failure or detector_failure
-    # is excluded from both the numerator and the denominator - it's
-    # neither a false positive nor evidence of a true negative, just a
-    # run that didn't produce a usable result.
+    # This script's own denominator excludes failed runs (not a FP or a TN).
     tested = [r for r in records if r["status"] == "success"]
     false_positives = [r for r in records if r["false_positive"]]
     detector_failures = [r for r in records if r["status"] == "detector_failure"]
@@ -195,16 +120,7 @@ def print_report(defect_name, records):
     print(f"False positives: {len(false_positives)}/{len(tested)}  "
           f"[this script's denominator: successfully-run non-matching images only]")
 
-    # app.py's run_full_evaluation() never excludes anything: every
-    # non-matching image gets bucketed into FP or TN via
-    # _run_cached_detector(), which returns False (i.e. TN, not
-    # excluded) on a segmentation_failure or detector_failure exactly
-    # like it does on a genuine "not detected". So its FP denominator
-    # for this detector is always every non-matching image, full stop.
-    # Printed here as its own line - not folded into the count above -
-    # so both counting rules stay visible and comparable rather than
-    # silently picking one. They agree only when there are zero
-    # failures; they will diverge the moment one occurs.
+    # app.py counts failures as TN instead, so its denominator is every non-matching image.
     print(f"App.py-equivalent denominator (run_full_evaluation counts every "
           f"non-matching image - including any failure - as FP or TN, "
           f"never excluded): {len(false_positives)}/{len(records)}")
@@ -232,10 +148,6 @@ def write_csv(all_records):
             writer.writerow({k: r.get(k) for k in fieldnames})
     print(f"\nFull sweep log: {FP_SWEEP_CSV}")
 
-
-# ============================================================
-# MAIN
-# ============================================================
 
 def main():
     parser = argparse.ArgumentParser(

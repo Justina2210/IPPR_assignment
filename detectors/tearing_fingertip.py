@@ -1,199 +1,36 @@
-"""
-detectors/tearing_fingertip.py
---------------------------------
-Classical OpenCV detector for "tearing_fingertip" defects (a torn-off
-or ripped fingertip). No ML.
-
-Same underlying anomaly signal as detectors/tearing.py (a local patch
-whose LAB colour deviates from the glove's own material colour - see
-that file's docstring for why colour deviation and not a mask-hole
-lookup), restricted to the fingertip area as requested:
-
-1. Locate up to 5 fingertip points on the glove's outer contour using
-   convex-hull-style protrusion analysis + finger-length analysis:
-   for every point on the contour, measure its distance from the
-   glove_mask centroid (a point that naturally sits in the palm, the
-   bulkiest part of the mask). This distance profile has one local
-   maximum per extended finger - a direct measure of "how far this
-   point sticks out", i.e. finger length. Peaks are found by simple
-   circular non-max suppression and must clear a minimum prominence
-   above the profile's median (the palm/valley baseline), which is
-   what keeps the wrist/palm corners from being mistaken for fingers.
-   This naturally handles hands with fewer than 5 fingers extended
-   (a fist/"shaka" pose correctly yields 2 candidates, not 5) and
-   hands partially cropped out of frame.
-2. For each located fingertip, build a search ROI: a circle centred
-   on the tip, radius scaled to that finger's own measured length
-   (TIP_RADIUS_FRACTION), intersected with glove_mask. Because the
-   radius is a fraction of the finger's own protrusion length rather
-   than a fixed pixel value, this consistently covers "the top
-   portion of the finger" regardless of hand size or which finger.
-3. WHICH finger is torn and HOW BIG its box should be are deliberately
-   two separate passes:
-   a. Selection: within each finger's own tight ROI, flag pixels whose
-      LAB distance from the glove's own median material colour
-      (estimated from the eroded whole-glove interior, same as
-      tearing.py) exceeds a fixed cutoff and take the largest connected
-      blob per finger - identical extraction to tearing.py, just over a
-      much smaller region. Candidates are normally ranked by that
-      blob's area/ROI ratio, same as always - PROVEN reliable when at
-      least one candidate has a substantial, unambiguous blob (5 of
-      this dataset's 6 known images).
-      Only when EVERY candidate's ratio stays below
-      TRANSLUCENT_MAX_RATIO_CAP (0.30) - i.e. no candidate looks like an
-      obvious tear by area alone - does ranking switch to a composite
-      of three BOUNDARY signals instead (a thin ring around the blob,
-      not its interior):
-        - deviation_strength: mean LAB distance from material colour
-        - edge_density:       fraction of the boundary with Canny edge
-                               support
-        - sharpness:          mean local grey-level gradient magnitude
-      each min-max normalised to [0, 1] across this image's own
-      candidates and averaged with equal weight. This exists because on
-      TRANSLUCENT material (e.g. latex) every fingertip can show some
-      skin-coloured LAB deviation through the material, and those
-      translucency patches are typically LARGER in raw area than a real
-      tear's - plain area-based ranking picked a translucent tip over
-      the true tear on such an image. A real tear has a sharp torn
-      edge; translucency fades in gradually, which is what the three
-      boundary signals are meant to tell apart.
-      The area-ratio cap matters: an early version applied composite
-      ranking unconditionally on every image, and it regressed a
-      DIFFERENT, previously-correct image - a normal fingertip's
-      specular highlight can have a sharper boundary (by Sobel gradient)
-      than a real but large, slightly-blurred tear, so ranking by
-      boundary sharpness alone picked the highlight over an obvious,
-      dominant-by-area tear. Gating on "does any candidate already look
-      like a confident tear by area" restricts composite ranking to
-      only the regime it was built for. MIN_CANDIDATE_AREA_PX is
-      deliberately just a noise floor (not an area-competitive gate) so
-      a small-but-genuine translucent-case blob can still enter the
-      ranking - on the translucent-latex image this was built for, the
-      true tear's raw blob was 20x smaller than the largest (wrong)
-      candidate's, but still won the composite ranking on boundary
-      sharpness/density.
-   b. Box-quality: for THAT finger only, redo the same LAB-deviation
-      test within a MODERATELY DILATED version of its ROI
-      (ROI_DILATE_FRACTION - roughly double the circle's area, still
-      local to this one finger), close the result with a small kernel
-      to bridge thin gaps - a surviving rim of intact material across
-      part of the opening, or plain digitisation noise - then keep
-      whichever connected component the original tight ROI overlaps
-      most. That component's FULL extent becomes the box/mask, not
-      just the part that happened to fall inside the tight circle.
-      This matters because a torn fingertip's measured "tip" point
-      (step 1) is taken from what's left of the contour, which for a
-      badly torn finger doesn't reliably sit at the centre of the true
-      opening - the tight circle alone was silently clipping a large
-      fraction of the real tear on at least one image in this dataset.
-   Two earlier, simpler designs were tried and dropped: running (b)'s
-   dilate+close over the WHOLE glove at once let the closing step chain
-   together unrelated anomalies (shading, highlights on other fingers)
-   into one enormous component on several images; and running (b) for
-   EVERY finger before deciding the winner let that same inflation
-   occasionally outscore the real tear and flip which finger got
-   flagged. Keeping (a) exactly as the original tight-ROI-only
-   computation, and only ever improving the box for whichever finger
-   (a) already picked, avoids both failure modes.
-4. The final box is padded to a minimum size relative to the flagged
-   finger's own measured width (so a small or oddly-shaped blob still
-   renders as a legible box) and clipped to the glove silhouette's own
-   bounding area, so it can never float out over the background.
-
-A torn-off fingertip is also typically the *shortest* protrusion in
-the finger-length profile (a torn tip has less material than an
-intact one), so `measurements` additionally reports which finger index
-was flagged and how its length ranks among the others found, as a
-secondary, human-checkable signal - it is not required for the score
-because a naturally shorter finger (e.g. the little finger, or
-foreshortening from hand angle) would otherwise produce false
-positives on perfectly intact gloves.
-
-Score = confirmed anomaly area relative to that finger's own ROI area
-(not the whole glove_area - a fingertip patch is always going to be a
-small fraction of the entire glove, so scoring against glove_area the
-way tearing.py does would never saturate). `measurements.area_pct` is
-still reported relative to glove_area, matching the shared contract.
-"""
-
 import cv2
 import numpy as np
 
 
-# ============================================================
-# THRESHOLDS (documented here so they can be copied into the report)
-# ============================================================
-
-# --- Fingertip localisation ---
-
-# Circular moving-average window (in contour points) used to smooth
-# the distance-from-centroid profile before peak-picking.
 SMOOTH_WINDOW = 15
 
-# A candidate peak must be a local maximum within this fraction of the
-# contour's total point count on each side.
 LOCAL_MAX_WINDOW_FRAC = 0.01
 
-# Non-max suppression: two accepted fingertip peaks must be at least
-# this fraction of the contour length apart (as a circular index
-# distance), so one broad rounded tip doesn't yield duplicate peaks.
+# NMS keeps two accepted peaks at least this far apart (by contour index) so one broad rounded tip doesn't yield duplicate peaks.
 NMS_SEPARATION_FRAC = 0.06
 
-# A peak must exceed the profile's median by at least this fraction of
-# (max - median) to count as a finger rather than a palm/wrist bump.
 MIN_PROMINENCE_FRAC = 0.35
 
 MAX_FINGERTIPS = 5
 
-# Candidate points in the bottom fraction of the glove's own bounding
-# box are excluded - this is where the cuff/wrist trim sits in every
-# photo in this dataset, not a finger.
+# Excludes the bottom fraction of the glove's bounding box, where the cuff/wrist trim sits in this dataset, not a finger.
 BOTTOM_MARGIN_FRACTION = 0.05
 
-# --- Per-finger ROI ---
-
-# ROI circle radius, as a fraction of that finger's own measured
-# protrusion length (distance from centroid, minus the profile's
-# median/baseline). Keeps the ROI to roughly the top of the finger
-# rather than reaching down into the palm.
+# ROI radius scales with the finger's own protrusion length so it stays near the fingertip rather than reaching into the palm.
 TIP_RADIUS_FRACTION = 0.6
 MIN_TIP_RADIUS_PX = 15
-
-# --- Colour-deviation anomaly search ---
 
 EROSION_FRACTION = 0.012          # of sqrt(glove_area), for material-colour sampling only
 MIN_EROSION_PX = 5
 MAX_EROSION_PX = 30
 
-# A pixel counts as anomalous if its ab (chroma) distance clears
-# MIN_COLOUR_DISTANCE, OR its lightness distance clears
-# MIN_LIGHTNESS_DISTANCE (same OR as tearing.py). A stricter version
-# was tried - requiring lightness spikes to also clear a minimum
-# accompanying chroma shift - because a rounded fingertip catches much
-# stronger specular highlight/shadow than the flatter palm tearing.py
-# searches, and pure-lightness spikes from that were driving false
-# positives on plain touching/damaged_by_fold photos. That extra gate
-# cut those false positives noticeably, but on this dataset it also
-# suppressed several genuine tears whose skin-tone contrast happened
-# to be subtle (particularly on latex and one cotton photo, where the
-# true tear region scored no higher than ordinary shading noise once
-# gated), dropping recall on the 6 known positives from 6/6 to 2/6.
-# Recall on the target category is what evaluate.py actually scores
-# (see tearing.py's docstring - no true negatives are tested against a
-# detector in the real pipeline), so the plain OR is kept.
+# An AND-gated variant (chroma AND lightness) was tried since fingertips catch more specular highlight/shadow than the palm, but it dropped recall on the 6 known positives from 6/6 to 2/6, so the OR gate is kept (same as tearing.py).
 # TUNED-BY-EYE on the 68-image dataset
 MIN_COLOUR_DISTANCE = 22.0        # LAB a/b distance
 # TUNED-BY-EYE on the 68-image dataset
 MIN_LIGHTNESS_DISTANCE = 28.0     # LAB L distance
 
-# ROI-area ratio at/above which the score saturates to 1.0. Measured
-# ratios on the 6 known tearing_fingertip images ranged ~26%-72%. Also
-# acts as the effective "is this substantial enough" floor together
-# with DETECTION_SCORE_THRESHOLD below (score >= 0.5 needs ratio >=
-# 0.25) - a stronger requirement than the old, now-removed
-# MIN_HOLE_AREA_RATIO/MIN_EDGE_SUPPORT_PX candidate-stage gates ever
-# were, so dropping those in favour of composite ranking (see PROBLEM 1
-# in the module docstring) didn't loosen anything at the final decision.
+# Score saturates at this ROI-area ratio; measured ratios on the 6 known positives ranged ~26%-72%, and combined with DETECTION_SCORE_THRESHOLD this effectively requires ratio >= 0.25 to detect.
 # TUNED-BY-EYE on the 68-image dataset
 STRONG_HOLE_AREA_RATIO = 0.50     # 50% of the fingertip ROI area
 
@@ -202,81 +39,27 @@ EDGE_SUPPORT_DILATE_PX = 5
 
 DETECTION_SCORE_THRESHOLD = 0.5
 
-# --- Translucent-material candidate ranking (see module docstring) ---
-
-# A candidate blob must clear this many raw pixels to be considered at
-# all - a pure noise floor, NOT the old MIN_HOLE_AREA_RATIO area-share
-# gate. That gate was excluding a genuine but small torn-opening blob
-# on translucent latex (see PROBLEM 1 in the module docstring): a real
-# tear's exposed-skin patch can clear the LAB threshold over only a
-# handful of strongly-deviating pixels, while translucency shows up as
-# a much larger but weaker, gradual deviation across most of a tip.
+# Raw-pixel floor, not an area-share gate: a real tear can clear the LAB threshold over just a handful of pixels while translucency shows a larger but weaker deviation, so a ratio gate was excluding genuine small blobs.
 MIN_CANDIDATE_AREA_PX = 10
 
-# Ring thickness (px) used to sample each candidate blob's *boundary*
-# for edge-density and sharpness - a real tear has a sharp torn edge;
-# translucency fades in gradually, so its boundary carries less Canny
-# edge support and a shallower local gradient.
+# Ring thickness for sampling each blob's boundary: a real tear has a sharp edge (strong Canny support/gradient), translucency fades in gradually (weaker).
 RING_KERNEL_PX = 5
 _RING_KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (RING_KERNEL_PX, RING_KERNEL_PX))
 
-# Composite boundary-based ranking is used only when EVERY candidate's
-# blob is still small relative to its own ROI (max ratio below this
-# cap) - not universally. Two reasons: (1) when a candidate's blob
-# already fills a large share of its ROI, its "boundary ring" starts
-# overlapping the ROI's own artificial circular cutoff rather than the
-# blob's true edge, making the sharpness/edge-density signals noisy;
-# (2) empirically, on a genuine substantial tear (large, unambiguous
-# blob) plain area-ratio ranking is already reliable, and composite
-# ranking regressed exactly that case on this dataset - a normal
-# fingertip's specular highlight can have a SHARPER boundary than a
-# real but slightly-blurred tear edge, so ranking by sharpness alone
-# picked the highlight over a large, obvious tear. Measured on this
-# dataset's 6 known images, the translucent-latex image's largest
-# candidate ratio (0.26) sits far below every other image's (0.45-0.72)
-# - this cap sits in that gap with margin on both sides.
+# Composite ranking (for subtle translucency) only kicks in below this ratio cap; the translucent-latex case's largest ratio (0.26) sits well below every other known image's (0.45-0.72).
 # TUNED-BY-EYE on the 68-image dataset
 TRANSLUCENT_MAX_RATIO_CAP = 0.30
 
-# Chroma-only (a/b, no lightness) floor a candidate blob's mean colour
-# deviation must clear to be trusted in area-ratio ranking mode. Fixes
-# a failure mode distinct from translucency: on knit cotton, a
-# fingertip's rounded surface catches a specular highlight that is
-# large in raw pixel area and can even carry sharp Canny edges (the
-# knit's own ribbing), but is almost pure LIGHTNESS deviation with
-# near-zero chroma shift - unlike a real tear, which exposes skin tone
-# and is genuinely chroma-different from the glove material, not just
-# brighter. Measured on this dataset: every genuine tearing_fingertip
-# candidate's blob (across all 6 known images) had mean chroma
-# deviation >=5.7, while the false, highlight-driven blobs that used to
-# win by raw area on a since-fixed cotton image stayed <=3.3 - this
-# floor sits in that gap with margin on both sides. Only gates the
-# area-ratio ranking path; composite mode (below) already ranks on
-# boundary character rather than raw area.
+# Filters out knit specular highlights, which can be large and sharp-edged but almost pure lightness deviation (no real chroma difference); genuine candidates had chroma >=5.7, false ones <=3.3 on this dataset.
 MIN_CHROMA_FOR_AREA_RANKING = 4.5   # TUNED-BY-EYE on the 68-image dataset
 
-# --- Blob merging / box quality ---
-
-# Each finger's tight ROI circle is dilated by this fraction of its
-# own radius before the anomaly mask is computed and merged, so a tear
-# that spills slightly past the tight circle (the "tip" point used to
-# centre it, taken from what's left of a torn contour, doesn't reliably
-# sit at the true centre of the opening) still gets picked up in full.
-# Kept as a per-finger LOCAL expansion rather than searching the whole
-# glove at once - an early version that merged over the whole glove_mask
-# chained together unrelated anomalies (shading, highlights on other
-# fingers) into single enormous components on several images.
+# Each finger's ROI is dilated by its own radius (locally, not globally) before merging, so a tear spilling past the tight circle is still fully captured without chaining unrelated anomalies from other fingers.
 ROI_DILATE_FRACTION = 1.0
 
-# Closing kernel applied to the (locally dilated) anomaly mask to
-# bridge small gaps - a thin surviving rim of intact material across
-# part of a torn opening, or digitisation noise - that would otherwise
-# split one physical tear into several disconnected components.
+# Closes small gaps (a thin surviving rim, or noise) that would otherwise split one tear into multiple components.
 MERGE_CLOSE_KERNEL_PX = 11
 
-# The final box's shorter side must be at least this fraction of the
-# finger's own measured width, so a small/fragmented anomaly blob
-# still renders as a visible box rather than a sliver.
+# Final box's shorter side is floored to this fraction of the finger's own width, so a fragmented blob still renders as a visible box, not a sliver.
 MIN_BOX_SIZE_FRACTION = 0.6
 MIN_BOX_DIM_PX = 15
 
@@ -330,15 +113,7 @@ def _circular_smooth(values, window):
 
 
 def _locate_fingertips(glove_mask):
-    """
-    Find up to MAX_FINGERTIPS fingertip points on glove_mask's outer
-    contour via convex-hull-style protrusion analysis + finger-length
-    analysis (distance from the mask centroid).
-
-    Returns a list of (point, length) tuples, `length` being that
-    finger's protrusion distance above the profile's baseline (i.e. an
-    estimate of visible finger length), sorted by contour order.
-    """
+    """Find up to MAX_FINGERTIPS fingertip points via distance-from-centroid contour peaks; returns (point, length) tuples in contour order."""
     contours, _ = cv2.findContours(glove_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if not contours:
         return []
@@ -359,14 +134,7 @@ def _locate_fingertips(glove_mask):
     max_d = float(smoothed.max())
     prominence_threshold = median_d + MIN_PROMINENCE_FRAC * (max_d - median_d)
 
-    # Every photo in this dataset holds the hand fingers-up, cropped at
-    # the wrist/cuff at the bottom of the frame. A cuff trim band in a
-    # colour different from the glove body (common - e.g. a coloured
-    # elastic hem) can register as a spurious "fingertip" here, since
-    # it both sits far from the mask centroid and differs sharply in
-    # colour from the rest of the glove. Excluding the bottom margin of
-    # the glove's own bounding box rules that out without assuming
-    # anything about hand size or position within the frame.
+    # Excludes the bottom margin of the glove's bounding box, where a coloured cuff/hem trim can register as a spurious peak.
     _, bbox_y, _, bbox_h = cv2.boundingRect(contour)
     min_valid_y = bbox_y + (1.0 - BOTTOM_MARGIN_FRACTION) * bbox_h
 
@@ -388,18 +156,7 @@ def _locate_fingertips(glove_mask):
         if len(selected) >= MAX_FINGERTIPS:
             break
 
-    # Exclude the thumb: anatomically it sits at a much wider angle from
-    # its nearest neighbour than the four fingers do from each other
-    # (the thumb-index web gap is far wider than any inter-finger gap),
-    # so it consistently has the largest circular contour-index distance
-    # to its nearest neighbouring fingertip. Measured on the dataset,
-    # the thumb's distinct orientation catches different specular
-    # highlight/shadow than the other four fingers, which made it
-    # consistently outscore genuine (but subtler) tears elsewhere - none
-    # of this dataset's tearing_fingertip defects are on the thumb.
-    # Only applied with >=4 fingertips found: with fewer, an isolated
-    # point is as likely to be the actual damaged/only-visible finger as
-    # it is the thumb, so excluding it would remove a real candidate.
+    # Excludes the thumb (the point with the largest circular gap to its nearest neighbour) since its own highlight/shadow used to outscore real tears and none of this dataset's defects are on it; only applied with >=4 fingertips, since with fewer an isolated point could be the real defect.
     if len(selected) >= 4:
         nearest_gap = {
             i: min(min(abs(i - j), n - abs(i - j)) for j in selected if j != i)
@@ -418,11 +175,7 @@ def _locate_fingertips(glove_mask):
 
 
 def _finger_width_at(glove_mask, x, y):
-    """
-    Width of glove_mask's foreground run through (x, y), measured by
-    walking left/right from that point. Returns 0 if (x, y) isn't
-    itself foreground (off the finger, or on a background gap).
-    """
+    """Width of glove_mask's foreground run through (x, y); 0 if (x, y) isn't itself foreground."""
     if not (0 <= y < glove_mask.shape[0] and 0 <= x < glove_mask.shape[1]):
         return 0
     row = glove_mask[y]
@@ -438,12 +191,7 @@ def _finger_width_at(glove_mask, x, y):
 
 
 def _finalize_box(x, y, w, h, glove_bounds, min_dim):
-    """
-    Pad (x, y, w, h) so neither side is smaller than min_dim (expanding
-    around its own centre), then clip to glove_bounds = (gx0, gy0, gx1,
-    gy1) - the glove_mask's own foreground bounding box - so the box
-    can never float outside the glove silhouette.
-    """
+    """Pad (x, y, w, h) so neither side is smaller than min_dim, then clip to glove_bounds = (gx0, gy0, gx1, gy1)."""
     gx0, gy0, gx1, gy1 = glove_bounds
     cx, cy = x + w / 2.0, y + h / 2.0
     w, h = max(w, min_dim), max(h, min_dim)
@@ -458,26 +206,7 @@ def _finalize_box(x, y, w, h, glove_bounds, min_dim):
 
 
 def _candidate_signals(tight_mask, full_lab_dist, ab_distance, grad_mag, dilated_edges):
-    """
-    The signals used to rank candidate fingertip blobs (see module
-    docstring, PROBLEM 1): how strongly the blob deviates from the
-    glove's own material colour (both the full LAB magnitude used by
-    composite ranking, and a chroma-only figure used to gate area-ratio
-    ranking - see MIN_CHROMA_FOR_AREA_RANKING), how much Canny edge
-    support its boundary carries, and how sharp the local grey-level
-    gradient is right at that boundary. The edge/sharpness signals are
-    measured on a thin ring around the blob rather than the blob's
-    interior, since it's the BOUNDARY character (sharp torn edge vs.
-    gradual translucency fade) that's diagnostic - the interior of a
-    large translucent patch can look just as "deviated" on average as a
-    real tear's interior.
-
-    Returns
-    -------
-    dict
-        {"blob_area", "deviation_strength", "chroma_strength",
-         "edge_density", "sharpness"}
-    """
+    """Colour-deviation and edge signals used to rank candidate fingertip blobs, measured on a thin ring around each blob's boundary (not its interior) since it's the boundary character - sharp torn edge vs. gradual translucency fade - that's diagnostic."""
     blob_area = cv2.countNonZero(tight_mask)
     ring = cv2.subtract(cv2.dilate(tight_mask, _RING_KERNEL), cv2.erode(tight_mask, _RING_KERNEL))
     ring_area = cv2.countNonZero(ring)
@@ -509,23 +238,7 @@ def _normalize(values):
 
 
 def detect_tearing_fingertip(processed, segmentation):
-    """
-    Detect a torn/ripped fingertip in a segmented glove.
-
-    Parameters
-    ----------
-    processed : dict
-        Output of preprocess_image().
-    segmentation : dict
-        Output of segment_glove().
-
-    Returns
-    -------
-    dict
-        Result dict following the evaluate.py detector contract:
-        defect_name, detected, detection_score, algorithm,
-        bounding_box, mask, measurements.
-    """
+    """Detect a torn/ripped fingertip in a segmented glove; returns a result dict per the detector contract."""
     glove_mask = segmentation.get("glove_mask")
     glove_area = segmentation.get("glove_area", 0)
     lab = processed.get("lab")
@@ -539,9 +252,7 @@ def detect_tearing_fingertip(processed, segmentation):
     if not fingertips:
         return _empty_result()
 
-    # Material colour reference, sampled from the eroded whole-glove
-    # interior (same approach as tearing.py) - a large, stable sample
-    # mostly drawn from the palm, away from any one fingertip.
+    # Material colour reference sampled from the eroded whole-glove interior (same as tearing.py) - a large, stable sample away from any one fingertip.
     erosion_px = int(np.clip(EROSION_FRACTION * np.sqrt(glove_area), MIN_EROSION_PX, MAX_EROSION_PX))
     erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (erosion_px * 2 + 1, erosion_px * 2 + 1))
     interior_valid = cv2.erode(glove_mask, erode_kernel) > 0
@@ -560,10 +271,7 @@ def detect_tearing_fingertip(processed, segmentation):
     edges = cv2.Canny(gray_enhanced, CANNY_LOW, CANNY_HIGH)
     dilated_edges = cv2.dilate(edges, _EDGE_DILATE_KERNEL)
 
-    # Used only for candidate ranking (PROBLEM 1) - full LAB distance
-    # (not just the a/b-or-L OR test) as the "how strongly does this
-    # deviate" magnitude, and a Sobel gradient map of gray_enhanced as
-    # the "how sharp is the boundary" signal.
+    # Used only for ranking: full_lab_dist is deviation strength, grad_mag (Sobel) is boundary sharpness.
     full_lab_dist = np.sqrt(l_delta ** 2 + ab_distance ** 2)
     grad_mag = cv2.magnitude(
         cv2.Sobel(gray_enhanced, cv2.CV_32F, 1, 0, ksize=3),
@@ -575,38 +283,7 @@ def detect_tearing_fingertip(processed, segmentation):
 
     finger_lengths = [length for _, length in fingertips]
 
-    # --- Phase 1: which finger is torn? ---
-    # Deliberately the ORIGINAL, tight-ROI-only computation (no search
-    # dilation, no closing) - unchanged from before the earlier
-    # box-quality fix. An early version applied the dilate/close/merge
-    # step while ALSO deciding which finger wins, and that let noise/
-    # highlights near other fingers get inflated by the same merge and
-    # occasionally outscore the real tear - a cross-finger regression
-    # this dataset's 6 known images caught. Keeping selection separate
-    # from box-quality means phase 2 can only ever improve the box for
-    # whichever finger this phase already - and reliably - picked.
-    #
-    # Candidates are ranked by a composite of THREE boundary signals
-    # (PROBLEM 1: translucent latex) rather than by blob area/ratio.
-    # On translucent material every fingertip can show skin-coloured
-    # LAB deviation, and the translucency patches are usually LARGER in
-    # raw area than a real tear's - ranking by area alone (the previous
-    # design) picked a translucent tip over the real one. A real tear
-    # has a sharp torn edge; translucency fades in gradually. So each
-    # candidate blob's BOUNDARY (a thin ring around it, not its
-    # interior - a large translucent patch's interior can look just as
-    # "deviated" on average as a real tear's) is scored on:
-    #   (a) deviation_strength - mean LAB distance from material colour
-    #   (b) edge_density        - fraction of the boundary with Canny
-    #                             edge support
-    #   (c) sharpness            - mean local grey-level gradient
-    # normalised to [0, 1] across this image's own candidates (material
-    # and lighting vary a lot between photos, so only relative ranking
-    # within one image is meaningful) and averaged with equal weight.
-    # Candidates only need to clear a tiny raw-pixel floor
-    # (MIN_CANDIDATE_AREA_PX) to enter the ranking - the old 5%-of-ROI
-    # area gate was excluding the real tear outright on the one image
-    # this was built for (see module docstring, PROBLEM 1).
+    # Phase 1 picks which finger is torn using the tight ROI only (no dilation/closing); merging while choosing the winner let noise near other fingers get inflated and occasionally outscore the real tear.
     candidates = []  # dicts with finger_index, tight_mask, roi_mask, roi_area, ratio, signals
 
     for finger_index, (point, length) in enumerate(fingertips):
@@ -649,39 +326,7 @@ def detect_tearing_fingertip(processed, segmentation):
     if not candidates:
         return _empty_result()
 
-    # Composite boundary ranking only when EVERY candidate's blob is
-    # still small relative to its ROI - see TRANSLUCENT_MAX_RATIO_CAP.
-    # Otherwise (the common case) rank by clipped score, exactly as
-    # before this fix (score, not raw ratio: two candidates both above
-    # STRONG_HOLE_AREA_RATIO saturate to the same score, and the tie
-    # resolves to whichever was found first, in finger_index order -
-    # that specific tie-break, not a considered ranking, is what
-    # happened to land on the right finger on two of this dataset's
-    # borderline images, where two fingers show comparably strong
-    # anomaly area and raw ratio alone doesn't cleanly separate them).
-    #
-    # Tried and dropped: flooring the final detection_score at this
-    # branch's composite value once it wins, so a correctly-localised
-    # but visually subtle translucent tear (this dataset's
-    # latex_tearing_fingertip_1 - composite ranking already picks the
-    # right finger here, it's the confirmed-detected outcome that's
-    # missing) doesn't score near-zero. Measured against the full FP
-    # sweep, that raised tearing_fingertip's false-positive rate from
-    # 36/62 to 59/62 - composite ranking always produces SOME winner
-    # with a comparatively high composite value on almost every image
-    # (it's a within-image relative ranking, not absolute evidence of a
-    # real tear), so flooring the score on it fired on nearly every
-    # other defect category too. A stricter version gated on absolute
-    # (not relative) chroma/edge/sharpness floors was tried next and
-    # still fired on 28 of the 62 sweep images - ordinary dirty/
-    # discoloration/plastic_contamination fingertips routinely produce
-    # a STRONGER absolute colour+edge signal than this one subtle tear.
-    # There is no signal in this candidate set that separates that
-    # image's true tear from the sweep's false candidates at a
-    # confidence high enough to detect it without also detecting a
-    # third of the other categories, so its score is left as pure
-    # area-ratio like every other image, and it stays correctly
-    # localised but below DETECTION_SCORE_THRESHOLD.
+    # Composite ranking only kicks in when every candidate's ratio is still below TRANSLUCENT_MAX_RATIO_CAP; otherwise ranks by clipped score (ties go to the first finger_index found, which happened to be correct on two borderline images).
     if max(c["ratio"] for c in candidates) < TRANSLUCENT_MAX_RATIO_CAP:
         strength_n = _normalize([c["signals"]["deviation_strength"] for c in candidates])
         edge_n = _normalize([c["signals"]["edge_density"] for c in candidates])
@@ -690,21 +335,7 @@ def detect_tearing_fingertip(processed, segmentation):
             c["composite"] = (s + e + sh) / 3.0
         winner = max(candidates, key=lambda c: c["composite"])
     else:
-        # PROBLEM 2 (knit-material highlight false positive): a
-        # fingertip's rounded surface can catch a specular highlight
-        # that is large in raw area - sometimes larger than a real
-        # tear's own exposed-skin patch - but is almost pure lightness
-        # deviation, not a genuine colour/chroma difference from the
-        # glove material. Ranking by raw area alone (as below) let such
-        # a highlight outscore the real tear on a cotton image in this
-        # dataset. Restricting the pool to candidates whose blob is
-        # also chroma-anomalous (see MIN_CHROMA_FOR_AREA_RANKING) before
-        # ranking by area removes the highlight-only blobs without
-        # touching this branch's behaviour on every other image, where
-        # the true candidate was already comfortably chroma-anomalous
-        # too. Falls back to the full candidate pool if the filter would
-        # otherwise leave nothing to rank (keeps prior behaviour rather
-        # than ever returning "no candidates" because of this filter).
+        # Restricts to chroma-anomalous candidates so a knit fingertip's specular highlight (large area, but almost pure lightness deviation) can't outscore a real tear by area alone; falls back to the full pool if that would leave nothing.
         strong_chroma = [c for c in candidates if c["signals"]["chroma_strength"] >= MIN_CHROMA_FOR_AREA_RANKING]
         ranking_pool = strong_chroma if strong_chroma else candidates
         winner = max(ranking_pool, key=lambda c: c["score"])
@@ -714,13 +345,7 @@ def detect_tearing_fingertip(processed, segmentation):
     roi_area = winner["roi_area"]
     tight_ratio = winner["ratio"]
 
-    # --- Phase 2: how big is the tear, really? ---
-    # For the ALREADY-CHOSEN finger only, search a moderately dilated
-    # version of its ROI (not the whole glove, and not other fingers'
-    # ROIs) and close small gaps, so a tear that spills slightly past
-    # the tight circle - or was fragmented by a thin surviving rim of
-    # material - is recovered in full rather than reported as whatever
-    # fragment happened to fall inside the tight circle.
+    # Phase 2 measures the chosen finger's tear at full size: dilating the ROI and closing gaps recovers a tear that spilled past the tight circle or was fragmented by a thin surviving rim.
     radius = max(MIN_TIP_RADIUS_PX, int(TIP_RADIUS_FRACTION * fingertips[finger_index][1]))
     dilate_px = max(1, int(ROI_DILATE_FRACTION * radius))
     dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (dilate_px * 2 + 1, dilate_px * 2 + 1))
@@ -743,10 +368,7 @@ def detect_tearing_fingertip(processed, segmentation):
             )
             merged_mask = np.where(labels == component_label, np.uint8(255), np.uint8(0))
             merged_area = cv2.countNonZero(merged_mask)
-            # Only adopt the merged version if it's actually bigger -
-            # it never should be smaller (it's a superset by
-            # construction), but this guards against a degenerate
-            # relabelling if fed an empty/odd mask.
+            # Guards against a degenerate relabelling on an empty/odd mask; merged should never legitimately be smaller than tight by construction.
             if merged_area >= cv2.countNonZero(tight_mask):
                 candidate_mask = merged_mask
                 ratio = merged_area / roi_area
@@ -759,10 +381,7 @@ def detect_tearing_fingertip(processed, segmentation):
     x, y = int(xs.min()), int(ys.min())
     w, h = int(xs.max() - x + 1), int(ys.max() - y + 1)
 
-    # Pad to a sensible minimum (relative to the flagged finger's own
-    # width, so it scales with hand/photo size) and clip to the glove's
-    # own silhouette, so the box can never render as an unreadable
-    # sliver or float out over the background.
+    # Pads to a minimum relative to the flagged finger's own width (scales with photo size) and clips to the glove's silhouette.
     tip_point, tip_length = fingertips[finger_index]
     probe_y = min(glove_mask.shape[0] - 1, tip_point[1] + max(10, int(0.15 * tip_length)))
     finger_width = _finger_width_at(glove_mask, tip_point[0], probe_y)

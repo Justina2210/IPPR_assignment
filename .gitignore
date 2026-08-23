@@ -1,3 +1,6 @@
 __pycache__/
 CLAUDE.md
 REQUIREMENTS_CHECKLIST.md
+LIMITATIONS.md
+detectors/README_KaSin.md
+evaluate_py_metrics_reference.md

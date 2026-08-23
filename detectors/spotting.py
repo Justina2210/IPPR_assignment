@@ -1,24 +1,6 @@
-"""Detect discrete spotting using LAB anomalies and speck geometry.
-
-On pale latex the specks are rust/orange; on blue nitrile they are near-black.
-In both cases the marks are small, close to circular, and separated from each
-other by clean glove.
-
-That last property is what distinguishes spotting from dirty, which otherwise
-produces a similar count of small dark regions on knit cotton. Dirt is a smear:
-the glove between the specks is also soiled. Spots are discrete: the glove
-between them is clean. The isolation statistic in _anomaly.cloud_statistics
-measures exactly this and is the single feature that keeps the two apart.
-
-Thresholds were chosen by inspecting feature distributions on the group's own
-dataset. They are not learned, and were tuned on the same images used for
-testing, so the reported detection rate is optimistic.
-"""
-
 import numpy as np
 
 from . import _anomaly
-
 
 # Maximum region coverage accepted for a speck.
 MAX_SPECK_AREA_FRAC = 0.010
@@ -44,21 +26,7 @@ DECISION_THRESHOLD = 0.50
 
 
 def detect_spotting(processed: dict, segmentation: dict) -> dict:
-    """
-    Detect scattered spotting on a segmented glove.
-
-    Parameters
-    ----------
-    processed : dict
-        Output of preprocessing.preprocess_image().
-    segmentation : dict
-        Output of segmentation.segment_glove().
-
-    Returns
-    -------
-    dict
-        Result dictionary in the shared detector contract format.
-    """
+    """Detect scattered spotting on a segmented glove."""
     result = {
         "defect_name": "spotting",
         "detected": False,
@@ -75,7 +43,6 @@ def detect_spotting(processed: dict, segmentation: dict) -> dict:
         result["measurements"] = {"note": "glove interior too small to analyse"}
         return result
 
-    # Keep regions surrounded by glove and shaped like specks.
     surrounded = _anomaly.accept_blobs(blobs)
     specks = [
         b for b in surrounded
@@ -91,9 +58,7 @@ def detect_spotting(processed: dict, segmentation: dict) -> dict:
         result["measurements"] = {"speck_count": 0, "area_pct": 0.0}
         return result
 
-    # Count and isolation distinguish spotting from diffuse soiling.
-    # Count and isolation carry the most weight because they are what distinguish
-    # spotting from a dirt smear; shape and size confirm the regions are specks.
+    # Count and isolation carry the most weight - they're what distinguish spotting from a dirt smear; shape/size just confirm the regions are specks.
     evidence = _anomaly.combine([
         (0.30, _anomaly.ramp(stats["count"], *COUNT_RAMP)),
         (0.25, _anomaly.ramp(stats["isolation"], *ISOLATION_RAMP)),

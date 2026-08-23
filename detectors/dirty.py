@@ -1,27 +1,6 @@
-"""Detect diffuse soiling using LAB anomalies and surrounding darkening.
-
-On knit cotton the soiling is granular - dust caught in the weave, which
-thresholds into many small dark fragments. On latex it is a smoother grey-brown
-smear. The two look very different region by region, which is why this detector
-does not classify regions one at a time.
-
-What they share, and what no other defect in the set shares, is that the glove
-BETWEEN the dark fragments is itself darkened. Soiling has a halo: it fades
-outward instead of stopping at a hard edge. Spotting, by contrast, is discrete
-marks on clean glove. So the decisive feature is ring_dark from
-_anomaly.cloud_statistics, together with its inverse, the isolation ratio.
-Dirty is the low-isolation case; spotting and stain are the high ones.
-
-Thresholds below were chosen by inspecting feature distributions on the group's
-own dataset. They are not learned, and were tuned on the same images used for
-testing, so the reported detection rate is optimistic. This is stated as a
-limitation in the report rather than hidden.
-"""
-
 import numpy as np
 
 from . import _anomaly
-
 
 # Minimum fragment coverage considered soiling.
 MIN_FRAGMENT_AREA_FRAC = 0.00015
@@ -42,20 +21,7 @@ DECISION_THRESHOLD = 0.50
 
 
 def _cluster_fill(defect_mask, equivalent_radius):
-    """Measure how densely fragments fill their dilated envelope.
-
-    Parameters
-    ----------
-    defect_mask : numpy.ndarray
-        Binary fragment mask.
-    equivalent_radius : float
-        Radius used to scale dilation.
-
-    Returns
-    -------
-    float
-        Fraction of the envelope occupied by fragments.
-    """
+    """Fraction of the dilated fragment envelope actually occupied by fragments."""
     import cv2
 
     if defect_mask is None or not defect_mask.any():
@@ -68,21 +34,7 @@ def _cluster_fill(defect_mask, equivalent_radius):
 
 
 def detect_dirty(processed: dict, segmentation: dict) -> dict:
-    """
-    Detect diffuse soiling on a segmented glove.
-
-    Parameters
-    ----------
-    processed : dict
-        Output of preprocessing.preprocess_image().
-    segmentation : dict
-        Output of segmentation.segment_glove().
-
-    Returns
-    -------
-    dict
-        Result dictionary in the shared detector contract format.
-    """
+    """Detect diffuse soiling on a segmented glove."""
     result = {
         "defect_name": "dirty",
         "detected": False,
@@ -111,9 +63,7 @@ def detect_dirty(processed: dict, segmentation: dict) -> dict:
 
     fill = _cluster_fill(dirt_mask, stats["equivalent_radius"])
 
-    # Coverage and surrounding darkening are the primary soiling cues.
-    # Coverage and the soiling halo carry the most weight: soiling is defined by
-    # covering area and by dulling the surface around it.
+    # Coverage and the soiling halo carry the most weight - soiling is defined by area covered and by dulling the surrounding surface.
     evidence = _anomaly.combine([
         (0.30, _anomaly.ramp(stats["area_frac"], *COVERAGE_RAMP)),
         (0.25, _anomaly.ramp(stats["ring_dark"], *HALO_RAMP)),
@@ -122,9 +72,7 @@ def detect_dirty(processed: dict, segmentation: dict) -> dict:
         (0.10, _anomaly.ramp(stats["mean_dark"], *DEPTH_RAMP)),
     ])
 
-    # Shadow rejection. A bunched or folded glove produces exactly the signature
-    # this detector looks for - broad, low-contrast, diffuse darkening with a soft
-    # halo - so shape evidence alone cannot tell soiling from a crease.
+    # Shadow rejection: a bunched/folded glove produces the same broad, low-contrast, diffuse-halo signature, so shape evidence alone can't tell soiling from a crease.
     confidence = _anomaly.chromatic_confidence(stats)
     score = evidence * confidence
 

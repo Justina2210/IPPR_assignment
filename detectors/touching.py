@@ -1,19 +1,8 @@
-"""Hybrid classical detector for joined/touching glove fingers.
-
-Evidence is deliberately complementary:
-1. silhouette topology: one of four normal finger valleys is missing;
-2. a long internal seam lies inside the merged finger;
-3. glove exists on both sides and the local lobe is wider than one finger.
-
-This separation helps reject missing fingers (topology only), wrinkles/folds
-(edge only), and the external glove boundary. OpenCV/Numpy only.
-"""
 import cv2
 import numpy as np
 
 
-# All values are scale-relative. TUNED-BY-EYE starting values from the six
-# supplied touching images; validate them with fp_sweep.py after dataset merge.
+# Scale-relative constants, tuned by eye on the six touching-sample images.
 FINGER_REGION_BOTTOM = 0.70
 SIDE_MARGIN_RATIO = 0.035
 EXPECTED_GAPS = 4
@@ -156,12 +145,7 @@ def _line_continuity(edges, line, radius):
 
 
 def _seam_prominence(edges, line, glove_w):
-    """Compare a seam with nearby parallel edges to suppress knitted ribs.
-
-    Cotton texture produces several similarly strong parallel lines. A physical
-    overlap boundary should be more continuous than lines shifted to either
-    side of it.
-    """
+    """Compare a seam's edge continuity to nearby parallel offsets, since a real overlap boundary should be more continuous than the knitted ribs shifted to either side of it."""
     x1, y1, x2, y2 = line
     dx, dy = float(x2 - x1), float(y2 - y1)
     length = float(np.hypot(dx, dy))
@@ -189,9 +173,7 @@ def _side_support(mask, line, glove_w):
     if length <= 1.0:
         return 0.0
     nx, ny = -dy / length, dx / length
-    # Inspect every pixel close to the line. Sparse far-away probes can jump
-    # across a narrow background gap and land in the neighbouring finger,
-    # causing an external finger edge to look like an internal overlap seam.
+    # Dense near probes avoid jumping a background gap into the neighbouring finger.
     near_limit = max(3, int(round(0.018 * glove_w)))
     far_limit = max(near_limit + 2, int(round(0.045 * glove_w)))
     near_probes = range(2, near_limit + 1)
@@ -219,8 +201,7 @@ def _side_support(mask, line, glove_w):
                 votes += int(0 <= x < w and 0 <= y < h and mask[y, x] > 0)
             far_votes.append(votes)
         total += 1
-        # Both immediate sides must be almost uninterrupted glove. The looser
-        # far test allows a true overlap seam that approaches a fingertip edge.
+        # Immediate sides must be near-uninterrupted glove; the far test is looser.
         supported += int(
             near_ratios[0] >= 0.88 and near_ratios[1] >= 0.88
             and far_votes[0] >= 1 and far_votes[1] >= 1
@@ -261,7 +242,6 @@ def _merged_width(mask, line, typical_width, glove_w):
         widths.append(right - left + 1)
     median = float(np.median(widths)) if widths else 0.0
     ratio = median / max(typical_width, 1.0)
-    # Palm-crossing lines create implausibly huge widths and are rejected later.
     return median, float(ratio), bool(median <= 0.48 * glove_w)
 
 
@@ -277,9 +257,7 @@ def _seam_candidates(edges, mask, bounds):
     if lines is None:
         return []
 
-    # Cotton weave can create hundreds of Hough lines. Apply cheap orientation
-    # and length checks first, then run costly side/width/prominence analysis on
-    # only the longest plausible lines.
+    # Cheap orientation/length checks first, since cotton weave can yield hundreds of Hough lines.
     prefiltered = []
     for raw in lines[:, 0]:
         line = tuple(int(value) for value in raw)
@@ -311,8 +289,7 @@ def _seam_candidates(edges, mask, bounds):
         width, width_ratio, plausible_width = _merged_width(mask, line, typical, gw)
         if side < MIN_SIDE_SUPPORT or continuity < MIN_EDGE_CONTINUITY or not plausible_width:
             continue
-        # This is the most expensive candidate measurement, so compute it only
-        # after the cheaper geometry checks have accepted the line.
+        # Prominence is the priciest measurement, so it only runs after the cheaper checks pass.
         prominence = _seam_prominence(edges, line, gw)
 
         length_score = float(np.clip(
@@ -328,8 +305,7 @@ def _seam_candidates(edges, mask, bounds):
             0.16 * length_score + 0.12 * verticality + 0.15 * continuity
             + 0.14 * side + 0.08 * boundary_score + 0.22 * width_score
             + 0.04 * top_score + 0.09 * prominence, 0.0, 1.0))
-        # An internal seam inside a genuinely broad lobe is more relevant than
-        # a high-contrast wrinkle inside a normal-width finger.
+        # A seam in a genuinely broad lobe matters more than a wrinkle in a normal-width finger.
         if width_ratio >= STRONG_MERGED_WIDTH_RATIO and side >= 0.68:
             score = min(1.0, score + 0.07)
         candidates.append({
@@ -369,9 +345,7 @@ def detect_touching(processed, segmentation):
     candidates = _seam_candidates(edges, mask, bounds)
     textured_glove = edge_density >= 0.10
     if textured_glove:
-        # Rank only candidates that stand out from the weave and occur inside a
-        # widened lobe. Do not let the strongest ordinary knitted rib prevent a
-        # slightly weaker but physically plausible overlap seam from winning.
+        # Rank only candidates that stand out from the weave inside a widened lobe.
         eligible = [
             item for item in candidates
             if item["prominence"] >= 0.04 and item["width_ratio"] >= 1.35
@@ -386,16 +360,13 @@ def detect_touching(processed, segmentation):
     seam_score = 0.0 if best is None else float(best["score"])
     width_ratio = 0.0 if best is None else float(best["width_ratio"])
 
-    # Dense cotton weave or many wrinkles yield numerous competing Hough lines.
     texture_penalty = float(np.clip(
         (edge_density - 0.10) / (MAX_UPPER_EDGE_DENSITY - 0.10), 0.0, 1.0))
     multiplicity_penalty = float(np.clip((len(candidates) - 4) / 8.0, 0.0, 1.0))
     adjusted_seam = float(np.clip(
         seam_score - 0.16 * texture_penalty - 0.10 * multiplicity_penalty, 0.0, 1.0))
 
-    # On a highly textured glove, accept only a locally unique seam situated
-    # inside a clearly broad lobe. This removes straight knitted ribs while
-    # retaining the darker boundary created by two overlapping fingers.
+    # On a textured glove, only a locally unique seam in a broad lobe counts, to reject knitted ribs.
     texture_localisation_ok = bool(
         best is not None and (
             not textured_glove

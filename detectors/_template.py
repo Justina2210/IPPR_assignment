@@ -1,41 +1,11 @@
-"""
-_template.py
-------------
-Skeleton for a new detector. Copy this file to detectors/<defect_name>.py,
-rename detect_xxx() to match your defect, fill in the TODOs, and add one
-line to DETECTOR_REGISTRY in evaluate.py:
-
-    "<defect_name>": "detectors.<defect_name>.detect_xxx"
-
-That's the only wiring needed - evaluate.py, app.py's single-defect mode,
-and the accuracy evaluation all pick it up automatically from the
-registry.
-
-THE 3 HARD RULES (per the assignment brief - every detector must obey
-these):
-  1. Classical image processing ONLY. No Haar cascades, no
-     TensorFlow/Keras/PyTorch/sklearn, no cv2.matchTemplate or other
-     trained/pattern-matching models. OpenCV + numpy primitives only.
-  2. All analysis happens INSIDE the glove. Always gate on
-     segmentation["glove_mask"] - never look at background pixels.
-  3. Any area percentage in "measurements" MUST use
-     segmentation["glove_area"] as the denominator - never
-     image.shape / the whole-frame pixel count.
-"""
-
 import cv2
 import numpy as np
 
-
-# ============================================================
-# CONFIG
-# ============================================================
 # Every threshold/weight below must be a named, commented constant (no
-# bare magic numbers inline in the detection logic). If a constant was
-# arrived at by looking at how it performed on the dataset rather than
-# derived from a physical/geometric argument, tag it:
+# bare magic numbers inline). If a constant was arrived at by looking
+# at how it performed on the dataset rather than derived from a
+# physical/geometric argument, tag it:
 #     # TUNED-BY-EYE on the 68-image dataset
-# so it's clear in the report which numbers are principled vs empirical.
 
 # TODO: replace with your own thresholds, e.g.
 # MIN_COLOUR_DISTANCE = 18   # LAB a/b distance considered anomalous
@@ -45,9 +15,7 @@ ALGORITHM = "TODO: short human-readable description of the technique used"
 
 
 def _empty_result():
-    """Return value for 'nothing found / could not run' - keeps every
-    early-return in detect_xxx() consistent with the full-result shape
-    below, so callers never have to special-case a missing key."""
+    """Return value for 'nothing found / could not run' - keeps every early return in detect_xxx() consistent."""
     return {
         "defect_name": "TODO_defect_name",   # str, must match the datasets/ folder name
         "detected": False,                    # bool
@@ -60,31 +28,11 @@ def _empty_result():
 
 
 def detect_xxx(processed, segmentation):
-    """
-    TODO: one-line description of what this detects.
-
-    Parameters
-    ----------
-    processed : dict
-        Output of preprocess_image() - has "original", "gray",
-        "gray_enhanced", "hsv", "lab", "denoised", etc.
-    segmentation : dict
-        Output of segment_glove() - has "glove_mask" (binary mask,
-        glove=255/background=0) and "glove_area" (pixel count).
-
-    Returns
-    -------
-    dict
-        Result dict following the evaluate.py detector contract:
-        defect_name, detected, detection_score, algorithm,
-        bounding_box, mask, measurements. Must pass evaluate.py's
-        validate_result().
-    """
+    """TODO: one-line description of what this detects; must return a dict following the detector contract (see CLAUDE.md)."""
     glove_mask = segmentation.get("glove_mask")
     glove_area = segmentation.get("glove_area", 0)
 
-    # Rule 2: bail out cleanly rather than analysing background pixels
-    # if segmentation didn't produce anything usable.
+    # Rule 2: bail out cleanly if segmentation gave nothing usable.
     if glove_mask is None or not glove_area or glove_area <= 0:
         return _empty_result()
 

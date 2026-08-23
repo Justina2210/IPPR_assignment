@@ -1,8 +1,3 @@
-"""Classical detector for a glove damaged by a large fold.
-
-The target is a long raised/folded ridge or band across the palm/wrist, not
-ordinary short wrinkles. Detection is restricted to the supplied glove mask.
-"""
 import cv2
 import numpy as np
 
@@ -107,8 +102,7 @@ def _paired_edge_support(edges, line, glove_width):
             edges, _shift_line(line, nx, ny, distance), radius, 25))
         scores.append(_continuity(
             edges, _shift_line(line, nx, ny, -distance), radius, 25))
-    # Use the strongest nearby parallel boundary; requiring several would reject
-    # folds where only one side produces a shadow.
+    # Uses the strongest nearby parallel boundary since requiring several would reject folds where only one side produces a shadow.
     return float(max(scores, default=0.0))
 
 
@@ -247,8 +241,7 @@ def _candidates(edges, gray, mask, bounds):
         if contrast < MIN_LOCAL_CONTRAST:
             continue
 
-        # Vertical folds are compared with glove height; horizontal/diagonal
-        # folds are compared with glove width.
+        # Vertical folds are scaled against glove height, horizontal/diagonal folds against glove width.
         length_scale = gh if vertical_fold else gw
         length_ratio = length / float(length_scale)
         length_score = float(np.clip(
@@ -290,9 +283,7 @@ def _select_textured_candidate(candidates):
     """Choose the physical fold rather than a regular cotton knit transition."""
     eligible = []
     for item in candidates:
-        # Horizontal folds sit in the lower palm. A true cotton vertical fold
-        # may begin slightly higher, but it must be long, right-of-centre and
-        # continue toward the wrist. This rejects ordinary vertical knit ribs.
+        # A true cotton vertical fold must be long, right-of-centre and reach toward the wrist, unlike ordinary vertical knit ribs.
         if item["vertical_fold"]:
             valid_vertical = bool(
                 item["line_top_ratio"] >= 0.47
@@ -312,8 +303,7 @@ def _select_textured_candidate(candidates):
         paired_strength = float(np.clip(
             (item["paired_support"] - MIN_PAIRED_SUPPORT)
             / (STRONG_PAIRED_SUPPORT - MIN_PAIRED_SUPPORT), 0.0, 1.0))
-        # This value is only for candidate selection. Confidence remains the
-        # candidate's measurement-derived detector score.
+        # Only affects candidate selection; detection_score still comes from the candidate's own measured score.
         vertical_preference = 0.32 if item["vertical_fold"] else 0.0
         rank = float(
             item["score"] + 0.22 * lower_position

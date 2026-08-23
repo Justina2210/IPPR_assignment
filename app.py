@@ -1,35 +1,3 @@
-"""
-app.py
-------
-Streamlit GUI for the Glove Defect Detection System.
-
-Wraps evaluate.py's single-image pipeline for interactive use - one
-image at a time, not the whole-dataset batch run. The heavy lifting
-(preprocessing -> segmentation -> the one detector matching the
-selected defect, loaded via DETECTOR_REGISTRY / load_detector()) comes
-from evaluate.py. The on-screen overlay is drawn by draw_rich_overlay()
-below, not evaluate.py's own draw_overlay() - that function is shared
-with the batch evaluation pipeline (it's what produces the on-disk
-overlay images in outputs/overlays/) and is kept untouched; this UI
-wants a richer, "industrial inspection" style render (label card,
-measurements, semi-transparent mask fill) that the shared function
-doesn't need to grow just for the GUI.
-
-run_pipeline() below is the one addition: it mirrors evaluate_image()'s
-own logic instead of calling it directly, because this UI also needs
-the intermediate `processed` / `segmentation` dicts (for the grayscale
-and glove-mask panels) and evaluate_image() doesn't return them. Calling
-evaluate_image() AND re-running preprocess_image()/segment_glove() to
-get those dicts would run the pipeline twice per image, so instead this
-wrapper runs preprocess_image() and segment_glove() once and feeds them
-to the detector exactly the way evaluate_image() does.
-
-The visual design (colours, cards, step badges, segmented pickers) is
-adapted from a static HTML mockup. Its own JS defect-detection logic
-was not used anywhere here - every result on screen comes from the
-real Python pipeline above.
-"""
-
 import csv
 import io
 import os
@@ -66,10 +34,6 @@ html, body, [class*="css"] { font-size: 17px; }
 </style>
 """, unsafe_allow_html=True)
 
-
-# ============================================================
-# STYLE
-# ============================================================
 
 def inject_style(step2_dim, step3_dim):
     st.markdown(
@@ -151,10 +115,6 @@ def step_head_html(number, title, done):
     )
 
 
-# ============================================================
-# DATA DISCOVERY
-# ============================================================
-
 @st.cache_data
 def list_materials():
     if not os.path.isdir(DATASET_ROOT):
@@ -194,16 +154,9 @@ def implemented_detectors():
     return working, len(DETECTOR_REGISTRY)
 
 
-# ============================================================
-# PIPELINE WRAPPER (see module docstring)
-# ============================================================
-
 def run_pipeline(image_path, defect_name):
-    """
-    Same status/record logic as evaluate.evaluate_image(), but also
-    returns `processed` and `segmentation` so the UI can render the
-    intermediate stages without a second pipeline pass.
-    """
+    """Same status/record logic as evaluate.evaluate_image(), but also returns processed/segmentation for the GUI panels."""
+    # Mirrors evaluate_image() so it can also return processed/segmentation.
     record = {
         "image_path": image_path,
         "defect_name": defect_name,
@@ -268,25 +221,13 @@ def run_pipeline(image_path, defect_name):
     return record, processed["original"], processed, segmentation
 
 
-# ============================================================
-# RICH OVERLAY (industrial-inspection style, GUI only)
-# ============================================================
-
 _OVERLAY_RED = (0, 0, 230)     # BGR - defect found
 _OVERLAY_GREY = (120, 120, 120)  # BGR - boxed but not over the detection threshold
 
 
 def draw_rich_overlay(original_bgr, record):
-    """
-    Industrial-inspection-style render for the result card: a tight box
-    around the defect, a label card beside it (defect name + score%,
-    plus a measurement line - area% or length ratio - when available),
-    and a semi-transparent fill over the detected mask region.
-
-    Deliberately separate from evaluate.py's draw_overlay(), which stays
-    untouched (it's shared with the batch pipeline and produces the
-    on-disk overlay images in outputs/overlays/).
-    """
+    """Industrial-inspection-style render for the result card: box + label card (name/score/measurement) + translucent mask fill."""
+    # Separate from evaluate.py's draw_overlay() - richer render for the GUI only.
     overlay = original_bgr.copy()
     bbox = record.get("bounding_box")
     if bbox is None:
@@ -321,8 +262,7 @@ def draw_rich_overlay(original_bgr, record):
     card_w = text_w + pad * 2
     card_h = line_h * len(lines) + pad * 2
 
-    # Label card sits just above the box; if that would run off the top
-    # of the frame, put it below the box instead.
+    # Label card sits above the box, or below if that would run off the top.
     card_x = max(0, min(x, overlay.shape[1] - card_w))
     card_y = y - card_h - 4
     if card_y < 0:
@@ -336,10 +276,6 @@ def draw_rich_overlay(original_bgr, record):
 
     return overlay
 
-
-# ============================================================
-# COMPOSITE FIGURE (for "Save figure")
-# ============================================================
 
 def build_composite_png(material, defect, record, original_bgr, processed, segmentation, overlay_bgr):
     def to_rgb(arr):
@@ -394,18 +330,9 @@ def build_composite_png(material, defect, record, original_bgr, processed, segme
     return buf.getvalue()
 
 
-# ============================================================
-# SESSION STATE
-# ============================================================
-
 st.session_state.setdefault("material", None)
 st.session_state.setdefault("defect", None)
 st.session_state.setdefault("full_eval_counts", None)
-
-
-# ============================================================
-# HEADER
-# ============================================================
 
 st.markdown(
     '<h2 style="font-size:22px; font-weight:600; letter-spacing:-.01em; margin-bottom:4px;">'
@@ -418,10 +345,6 @@ step2_dim = st.session_state.material is None
 step3_dim = st.session_state.defect is None
 inject_style(step2_dim, step3_dim)
 
-
-# ============================================================
-# STEP 1 — MATERIAL
-# ============================================================
 
 materials = list_materials()
 if not materials:
@@ -444,10 +367,6 @@ with st.container(border=True, key="step1card"):
                     st.rerun()
 
 
-# ============================================================
-# STEP 2 — DEFECT
-# ============================================================
-
 defects = list_defects(st.session_state.material) if st.session_state.material else []
 
 with st.container(border=True, key="step2card"):
@@ -467,10 +386,6 @@ with st.container(border=True, key="step2card"):
                     st.session_state.defect = d
                     st.rerun()
 
-
-# ============================================================
-# STEP 3 — IMAGE + RUN
-# ============================================================
 
 material = st.session_state.material
 defect = st.session_state.defect
@@ -499,10 +414,6 @@ with st.container(border=True, key="step3card"):
         )
 
 
-# ============================================================
-# RUN
-# ============================================================
-
 if run_clicked:
     with st.spinner("Running preprocessing -> segmentation -> detector..."):
         record, original_bgr, processed, segmentation = run_pipeline(image_path, defect)
@@ -515,10 +426,6 @@ if run_clicked:
     st.session_state["last_material"] = material
     st.session_state["last_defect"] = defect
 
-
-# ============================================================
-# RESULT CARD
-# ============================================================
 
 record = st.session_state.get("last_record")
 original_bgr = st.session_state.get("last_original")
@@ -616,19 +523,8 @@ else:
     st.info("Choose a material, defect and image above, then press **Run detection**.")
 
 
-# ============================================================
-# FULL-DATASET ACCURACY EVALUATION
-# ============================================================
-
 def _run_cached_detector(defect_name, processed, segmentation):
-    """
-    Run one detector against already preprocessed+segmented data,
-    mirroring evaluate.evaluate_image()'s detected/threshold logic
-    without paying for preprocessing/segmentation again - that part is
-    shared across all detectors for a given image (see
-    run_full_evaluation), since it doesn't depend on which defect is
-    being tested for.
-    """
+    """Run one detector against already preprocessed+segmented data, mirroring evaluate_image()'s detected/threshold logic."""
     if segmentation is None or segmentation.get("glove_area", 0) < MIN_GLOVE_AREA:
         return False
     detector_func = load_detector(defect_name)
@@ -643,25 +539,11 @@ def _run_cached_detector(defect_name, processed, segmentation):
 
 
 def run_full_evaluation(progress_bar):
-    """
-    Cross-test every implemented detector against every image in
-    datasets/ (not just the images in that detector's own folder, the
-    way evaluate.py's run does). Ground truth for a given
-    (detector, image) pair is just "does the image's own folder name
-    equal the detector's defect name" - see the caveat shown above the
-    resulting table for what that does and doesn't capture.
-
-    Returns (counts, total_images) where counts is
-    {defect_name: {"TP", "FP", "FN", "TN"}} for every implemented
-    detector.
-    """
+    """Cross-test every implemented detector against every image in datasets/; returns (counts, total_images)."""
     images = list(evaluate.discover_images())
     total_images = len(images)
 
-    # Preprocessing + segmentation is identical no matter which
-    # detector runs next, so it's computed once per image here and
-    # reused for all len(implemented) detector calls on that image,
-    # instead of redoing it once per detector.
+    # Preprocessing/segmentation is identical per image, so it's cached across detectors.
     cache = {}
     for i, (material, defect_folder, image_path) in enumerate(images):
         try:
@@ -764,22 +646,10 @@ with st.expander("Accuracy evaluation (full dataset)", expanded=False):
         )
 
 
-# ============================================================
-# RECOGNITION EVALUATION (full dataset)
-# ============================================================
-# Formerly the standalone evaluate_recognition.py script. Answers a
-# different question than the accuracy table above: given an
-# unlabelled image, does the highest-scoring detector name the right
-# defect? (The accuracy table asks instead whether each detector fires
-# correctly on its own images - a detector can pass that test and
-# still lose the naming contest to a sibling detector's higher score.)
-
 RECOGNITION_CSV_NAME = "recognition_results.csv"
 NO_PREDICTION = "(none)"
 
-# Defect grouping, carried over from evaluate_recognition.py: every
-# name here must match a datasets/ folder name and a
-# DETECTOR_REGISTRY key.
+# Every name here must match a datasets/ folder name and a DETECTOR_REGISTRY key.
 GEOMETRY_DEFECTS = {
     "tearing", "tearing_fingertip", "finger_not_enough", "touching",
     "damaged_by_fold", "incomplete_beading", "oversize",
@@ -799,12 +669,7 @@ def _defect_group(defect_name):
 
 
 def _score_all_detectors(processed, segmentation, detectors):
-    """
-    Run every detector on one already-preprocessed image. A detector
-    that raises is recorded at score 0.0 rather than dropped, so one
-    broken detector cannot silently shrink another image's candidate
-    list and hand the win to a detector that would otherwise have lost.
-    """
+    """Run every detector on one already-preprocessed image; a detector that raises scores 0.0 rather than being dropped."""
     scores, errors = {}, {}
     for name in detectors:
         detector_func = load_detector(name)
@@ -819,13 +684,7 @@ def _score_all_detectors(processed, segmentation, detectors):
 
 
 def _evaluate_one_recognition(material, true_defect, image_path, processed, segmentation, detectors):
-    """
-    Full recognition record for one image. predicted is the
-    highest-scoring detector, but only if it clears DETECTION_THRESHOLD
-    - otherwise the system has abstained and predicted is
-    NO_PREDICTION. correct_rank is where the correct detector placed
-    once all scores are sorted high to low (1 = got it right).
-    """
+    """Full recognition record for one image: predicted = highest-scoring detector clearing DETECTION_THRESHOLD (else NO_PREDICTION)."""
     record = {
         "material": material, "true_defect": true_defect, "image_path": image_path,
         "status": "success", "predicted": NO_PREDICTION, "top1_correct": False,
@@ -856,8 +715,7 @@ def _evaluate_one_recognition(material, true_defect, image_path, processed, segm
 
     record["top1_correct"] = record["predicted"] == true_defect
 
-    # How far ahead the winner was - a tiny margin means the ranking is
-    # fragile even when it happens to be right.
+    # A tiny margin means the ranking is fragile even when it's right.
     if len(ranked) > 1:
         record["margin"] = round(ranked[0][1] - ranked[1][1], 3)
 
@@ -865,12 +723,7 @@ def _evaluate_one_recognition(material, true_defect, image_path, processed, segm
 
 
 def run_recognition_evaluation(progress_bar):
-    """
-    Run every implemented detector on every image and ask which one
-    scores highest. Preprocessing + segmentation is computed once per
-    image and reused across every detector, same caching approach as
-    run_full_evaluation above.
-    """
+    """Run every implemented detector on every image and ask which one scores highest; preprocessing is cached across detectors."""
     images = list(evaluate.discover_images())
     total_images = len(images)
     detectors, _ = implemented_detectors()
@@ -1050,20 +903,12 @@ with st.expander("Recognition evaluation (full dataset)", expanded=False):
         )
 
 
-# ============================================================
-# PREPROCESSING & SEGMENTATION PREVIEWS (full dataset)
-# ============================================================
-# Formerly the standalone test_preprocessing.py / test_segmentation.py
-# scripts - folded in here so preview generation happens from the GUI
-# instead of a separate CLI run. preprocess_image() is computed once
-# per image and reused for both preview sets, instead of running it
-# twice the way the two original scripts did independently.
-
 PREPROCESSING_PREVIEW_ROOT = os.path.join("outputs", "preprocessing_preview")
 SEGMENTATION_PREVIEW_ROOT = os.path.join("outputs", "segmentation_preview")
 
 
 def generate_previews(progress_bar):
+    # preprocess_image() runs once per image, reused for both preview sets.
     images = list(evaluate.discover_images())
     total = len(images)
     failures = []

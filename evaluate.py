@@ -1,60 +1,3 @@
-"""
-evaluate.py
------------
-Shared evaluation script for the Glove Defect Detection System.
-
-Runs the full pipeline (preprocessing -> segmentation -> the ONE
-detector matching the labelled folder) over the whole dataset and
-produces:
-
-    - a bounding-box overlay image for every test image
-      (sharp magenta outline around the detected defect region)
-    - a per-image log (results.csv) with algorithm used, score,
-      detected flag, timing, etc.
-    - a per-defect + overall summary (summary.json) with detection
-      rate and the extra metrics listed at the bottom of this file
-    - separate successful_cases / failure_cases folders, and failures
-      are further split into "segmentation" vs "detector" failures
-
-HOW TO PLUG IN A DETECTOR
---------------------------
-1. Add one line to DETECTOR_REGISTRY:
-
-       "discoloration": "detectors.discoloration.detect_discoloration"
-
-2. Your function must have this signature:
-
-       def detect_xxx(processed: dict, segmentation: dict) -> dict
-
-   where `processed` is the output of preprocess_image() and
-   `segmentation` is the output of segment_glove().
-
-3. It must return a dict with AT LEAST these keys (see RESULT_SCHEMA):
-
-       {
-           "defect_name":     "discoloration",        # str
-           "detected":        True,                    # bool
-           "detection_score": 0.855,                    # float 0.0-1.0
-           "algorithm":       "LAB colour deviation + connected components",
-           "bounding_box":    (x, y, w, h),              # tuple or None
-           "mask":            defect_mask,               # np.ndarray or None
-           "measurements":    {"area_pct": 2.7},          # dict, can be {}
-       }
-
-   `algorithm` is a short human-readable string describing the
-   technique used - it gets printed in the summary/report so write
-   something specific, not just the defect name again.
-
-   If you don't have a tight bounding box but do have a defect mask,
-   leave "bounding_box": None and evaluate.py will derive one from
-   the mask automatically.
-
-Detectors that are missing or not yet implemented are skipped
-automatically (reported as "not implemented"), so the script runs
-fine at any point during development - you don't need to wait for
-everyone to finish.
-"""
-
 import os
 import csv
 import json
@@ -71,11 +14,6 @@ import numpy as np
 from preprocessing import load_image, preprocess_image
 from segmentation import segment_glove
 
-
-# ============================================================
-# CONFIG
-# ============================================================
-
 DATASET_ROOT = "datasets"
 OUTPUT_ROOT = "outputs"
 OVERLAY_DIR = os.path.join(OUTPUT_ROOT, "overlays")
@@ -90,19 +28,13 @@ DETECTION_RESULTS_JSON = os.path.join(OUTPUT_ROOT, "detection_results.json")
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp"}
 
-# Below this glove-mask pixel count, segmentation is considered to
-# have failed (glove not found / mask collapsed to near-nothing).
+# Below this glove-mask pixel count, segmentation is treated as failed.
 MIN_GLOVE_AREA = 500
 
-# Single cutoff evaluate.py uses to decide "detected" vs "not detected"
-# for the detection-rate calculation. Detectors may use their own
-# internal logic too, but this keeps every defect on the same footing
-# when we compare rates across all 12.
+# Single cutoff for detected/not-detected, comparable across all 12 defects.
 DETECTION_THRESHOLD = 0.5
 
-# Bounding-box outline style. Bright magenta was chosen because it
-# does not occur naturally in glove colours or in the turquoise/green
-# backgrounds, so it stays visible on every material.
+# Magenta: doesn't occur naturally in glove colours or backgrounds.
 BOX_COLOR = (255, 0, 255)   # BGR
 BOX_THICKNESS = 3
 LABEL_FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -111,18 +43,12 @@ LABEL_THICKNESS = 2
 MASK_FILL_COLOR = (0, 255, 255)   # BGR, translucent fill over flagged pixels
 MASK_FILL_ALPHA = 0.45
 
-# Oversize-only visual measurement colours.
-# These do not affect any other defect.
+# Oversize-only visual measurement colours; do not affect any other defect.
 OVERSIZE_PALM_COLOR = (255, 255, 0)   # BGR: cyan
 OVERSIZE_CUFF_COLOR = (0, 165, 255)   # BGR: orange
 OVERSIZE_LINE_THICKNESS = 3
 
-# ------------------------------------------------------------
-# Map: defect folder name -> "module.function" for that detector.
-# Fill in / update as each teammate finishes their files. An entry
-# that doesn't exist yet, or fails to import, is skipped and logged
-# as "not implemented" rather than crashing the whole run.
-# ------------------------------------------------------------
+# defect folder name -> "module.function"; missing/unimportable entries are skipped.
 DETECTOR_REGISTRY = {
     "tearing": "detectors.tearing.detect_tearing",
     "tearing_fingertip": "detectors.tearing_fingertip.detect_tearing_fingertip",
@@ -150,22 +76,11 @@ REQUIRED_KEYS = {
     "measurements": dict,
 }
 
-
-# ============================================================
-# DETECTOR LOADING
-# ============================================================
-
 _detector_cache = {}
 
 
 def load_detector(defect_name):
-    """
-    Import and return the detector function for a defect name.
-
-    Returns None (instead of raising) if the defect is not registered
-    or the module/function cannot be imported yet, so the evaluation
-    loop can keep going while detectors are still being written.
-    """
+    """Import and return the detector function for a defect name; returns None (not a raise) if unregistered/unimportable, so the loop keeps going."""
     if defect_name in _detector_cache:
         return _detector_cache[defect_name]
 
@@ -187,13 +102,7 @@ def load_detector(defect_name):
 
 
 def validate_result(result):
-    """
-    Check that a detector's return value follows the shared schema.
-
-    Raises ValueError with a specific message if something is wrong,
-    so a bad detector return fails loudly and clearly during testing
-    instead of silently corrupting the summary stats.
-    """
+    """Validate a detector's return dict against the shared schema; raises ValueError with a specific message on mismatch."""
     if not isinstance(result, dict):
         raise ValueError("Detector must return a dict.")
 
@@ -213,10 +122,6 @@ def validate_result(result):
     return True
 
 
-# ============================================================
-# OVERLAY DRAWING
-# ============================================================
-
 def _bbox_from_mask(mask):
     """Derive a bounding box (x, y, w, h) from a binary defect mask."""
     if mask is None:
@@ -230,13 +135,7 @@ def _bbox_from_mask(mask):
 
 
 def build_segmented_view(original_bgr, glove_mask):
-    """
-    Build the 'after segmentation' base image for overlays: the glove
-    stays in full colour, everything outside glove_mask is dimmed to
-    greyscale so the reviewer's eye goes straight to the glove/defect
-    instead of the background cloth. This is drawn on for overlays
-    instead of the raw original photo.
-    """
+    """Dim everything outside glove_mask to greyscale so overlays draw the eye to the glove, not the background."""
     gray = cv2.cvtColor(original_bgr, cv2.COLOR_BGR2GRAY)
     dimmed_background = (cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR) * 0.35).astype(np.uint8)
     mask_bool = glove_mask > 0
@@ -245,18 +144,7 @@ def build_segmented_view(original_bgr, glove_mask):
 
 
 def draw_overlay(base_bgr, defect_name, detected, score, bounding_box, defect_mask=None):
-    """
-    Draw a translucent defect-mask fill + a tight bounding box + label
-    on a copy of the (segmented) base image.
-
-    If defect_mask is given, flagged pixels are filled in with a
-    translucent colour first, so the reviewer can see exactly which
-    pixels the detector flagged -- not just the box around them.
-
-    If no bounding box is available (nothing detected, or the
-    detector didn't localise it), the image is returned unmodified
-    except for the label showing "Not Detected".
-    """
+    """Draw the translucent defect-mask fill, bounding box, and label onto a copy of the base image."""
     overlay = base_bgr.copy()
 
     if defect_mask is not None and np.any(defect_mask):
@@ -286,26 +174,10 @@ def draw_oversize_overlay(
     evidence_mask=None,
     measurements=None,
 ):
-    """
-    Oversize-only VISUAL overlay.
-
-    This function does not add explanation text to the image.
-    The detailed explanation is stored by oversize.py inside:
-
-        result["measurements"]["prototype_details"]
-
-    Visual meaning:
-        yellow  = loose-material / geometry evidence
-        cyan    = palm-width measurement
-        orange  = cuff-width measurement
-        magenta = oversize evidence bounding box
-
-    All other defects continue using the existing draw_overlay().
-    """
+    """Oversize-only visual overlay (yellow=evidence, cyan=palm line, orange=cuff line, magenta=box); explanatory text lives in measurements['prototype_details'], not on the image."""
     overlay = base_bgr.copy()
     measurements = measurements or {}
 
-    # Yellow detector evidence.
     if evidence_mask is not None and np.any(evidence_mask):
         fill = overlay.copy()
         fill[evidence_mask > 0] = MASK_FILL_COLOR
@@ -317,7 +189,6 @@ def draw_oversize_overlay(
             0,
         )
 
-    # Keep the existing magenta-box convention for visible localisation.
     if bounding_box is not None:
         x, y, w, h = [int(v) for v in bounding_box]
         cv2.rectangle(
@@ -328,7 +199,6 @@ def draw_oversize_overlay(
             BOX_THICKNESS,
         )
 
-    # Palm measurement line.
     palm_line = measurements.get("palm_measurement_line")
     if palm_line is not None and len(palm_line) == 4:
         x1, y1, x2, y2 = [int(v) for v in palm_line]
@@ -341,7 +211,6 @@ def draw_oversize_overlay(
             cv2.LINE_AA,
         )
 
-    # Cuff measurement line.
     cuff_line = measurements.get("cuff_measurement_line")
     if cuff_line is not None and len(cuff_line) == 4:
         x1, y1, x2, y2 = [int(v) for v in cuff_line]
@@ -357,22 +226,8 @@ def draw_oversize_overlay(
     return overlay
 
 
-# ============================================================
-# SINGLE IMAGE EVALUATION
-# ============================================================
-
 def evaluate_image(image_path, defect_name):
-    """
-    Run preprocessing -> segmentation -> the matching detector on one
-    image, and return a flat record describing what happened.
-
-    The record's "status" field is one of:
-        "success"              detector ran, returned a valid result
-        "segmentation_failure"  glove mask was empty/too small
-        "detector_failure"      detector raised an exception or
-                                 returned an invalid result
-        "not_implemented"       no detector registered/importable yet
-    """
+    """Run preprocessing -> segmentation -> the matching detector on one image; status is one of success/segmentation_failure/detector_failure/not_implemented."""
     record = {
         "image_path": image_path,
         "defect_name": defect_name,
@@ -439,22 +294,8 @@ def evaluate_image(image_path, defect_name):
     return record, segmented_view, defect_mask
 
 
-# ============================================================
-# MAIN EVALUATION LOOP
-# ============================================================
-
 def discover_images(defect_filter=None, material_filter=None):
-    """
-    Walk dataset/<material>/<defect>/... and yield (material, defect,
-    image_path) for every image whose parent folder name matches a
-    registered defect.
-
-    defect_filter / material_filter : optional str
-        If given, only yield images whose defect_name / material
-        matches (case-insensitive). Lets you evaluate a single
-        defect type (e.g. "discoloration") without waiting on the
-        full 12-defect x 3-material sweep.
-    """
+    """Yield (material, defect, image_path) for every dataset image whose parent folder matches a registered defect, optionally filtered."""
     for material in sorted(os.listdir(DATASET_ROOT)):
         if material_filter and material.lower() != material_filter.lower():
             continue
@@ -490,8 +331,7 @@ def run_evaluation(defect_filter=None, material_filter=None):
         base_name = f"{material}_{defect_name}_{os.path.splitext(os.path.basename(image_path))[0]}"
 
         if segmented_view is not None:
-            # Oversize needs its own visual evidence style.
-            # Every other defect keeps the original shared draw_overlay().
+            # Oversize needs its own visual style; other defects use draw_overlay().
             if defect_name == "oversize":
                 overlay = draw_oversize_overlay(
                     segmented_view,
@@ -540,17 +380,8 @@ def run_evaluation(defect_filter=None, material_filter=None):
     print_summary(summary)
 
 
-# ============================================================
-# LOGGING / METRICS
-# ============================================================
-
 def _json_safe(value):
-    """
-    Convert common NumPy/OpenCV/Python values into JSON-safe objects.
-
-    This keeps detection_results.json generic for every detector.
-    Detectors do not need to know about or write this JSON themselves.
-    """
+    """Convert NumPy/OpenCV/Python values into JSON-safe types, so detectors don't need to know about JSON themselves."""
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
 
@@ -576,23 +407,7 @@ def _json_safe(value):
 
 
 def write_detection_results_json(records):
-    """
-    Save complete per-image evaluation records for ALL defect types.
-
-    summary.json
-        Aggregate evaluation statistics.
-
-    results.csv
-        Compact tabular log.
-
-    detection_results.json
-        Full per-image detector output for prototype/result inspection,
-        including each detector's existing measurements dictionary.
-
-    No detector changes are required. A simple detector may have only
-    area_pct in measurements, while oversize can additionally provide
-    measurements["prototype_details"].
-    """
+    """Write full per-image records (including each detector's own measurements) to detection_results.json for result inspection."""
     payload = {
         "format_version": 1,
         "record_count": len(records),
@@ -626,17 +441,13 @@ def write_results_csv(records):
         writer.writeheader()
         for r in records:
             row = {k: r.get(k) for k in fieldnames}
-            # defect_area_pct comes from the detector's own "measurements"
-            # dict (e.g. {"area_pct": 2.7}), not a top-level record field.
+            # defect_area_pct comes from measurements, not a top-level field.
             row["defect_area_pct"] = r.get("measurements", {}).get("area_pct")
             writer.writerow(row)
 
 
 def build_summary(records):
-    """
-    Compute detection rate plus the extra metrics that are useful for
-    the report (see the docstring block at the bottom of this file).
-    """
+    """Compute detection rate and other report metrics, overall / per-defect / per-material."""
     summary = {"overall": {}, "by_defect": {}, "by_material": {}}
 
     def _stats_block(recs):
@@ -730,41 +541,3 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     run_evaluation(defect_filter=args.defect, material_filter=args.material)
-
-
-# ============================================================
-# METRICS INCLUDED / SUGGESTED FOR THE REPORT
-# ============================================================
-#
-# Already computed above, per defect / per material / overall:
-#
-#   - Detection Rate (%)          detected / total tested
-#   - Mean detection score        across all successfully-run images
-#   - Mean score when detected    shows how confident correct hits are
-#   - Segmentation failure rate   isolates preprocessing/segmentation
-#                                  problems from detector problems
-#   - Detector failure rate       (glove mask was fine, defect missed
-#                                  or the detector crashed)
-#   - Mean processing time (ms)   useful if a marker asks about speed
-#   - Mean defect area (%)        averaged over detected cases, from
-#                                  each detector's own measurements
-#   - Algorithm used              recorded per defect for the report
-#
-# Optional extras worth adding if there's time:
-#
-#   - Score histogram per defect  shows how close borderline misses
-#                                  were to DETECTION_THRESHOLD, good
-#                                  for justifying a threshold choice
-#   - Per-material breakdown      already included (by_material) -
-#                                  useful to show if a defect is
-#                                  harder to detect on one material
-#   - IoU / overlap with a hand-  only possible if a small set of
-#     labelled ground-truth masks  images gets manually annotated;
-#     is created                   gives a size-accuracy metric on
-#                                  top of pure detected/not-detected
-#
-# Precision/recall/confusion-matrix style metrics are NOT included by
-# design (per the architecture doc, section 11) because each labelled
-# image is only ever tested against its own matching detector - there
-# are no true negatives in this setup, so "detection rate" is the
-# correct primary metric rather than accuracy/precision.

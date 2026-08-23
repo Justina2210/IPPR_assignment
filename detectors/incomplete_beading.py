@@ -1,9 +1,3 @@
-"""Detect an incomplete glove cuff bead using lower-mask boundary geometry.
-
-An intact bead produces a continuous, comparatively smooth cuff opening.
-Incomplete beading produces a deep notch, split, missing segment, or strongly
-jagged lower edge. The algorithm uses only the supplied glove mask.
-"""
 import cv2
 import numpy as np
 
@@ -80,8 +74,7 @@ def _robust_cuff_baseline(xs, ys):
     if xs.size < 2:
         return ys.copy(), (0.0, float(ys[0]) if ys.size else 0.0)
 
-    # Missing bead regions move upward (smaller y), so initialise using the
-    # lower 45% of boundary points and iteratively discard upward outliers.
+    # Missing-bead regions move upward, so initialise from the lower 45% of boundary points and iteratively discard upward outliers.
     threshold = float(np.percentile(ys, 55))
     keep = ys >= threshold
     if np.count_nonzero(keep) < 2:
@@ -160,8 +153,7 @@ def detect_incomplete_beading(processed, segmentation):
     xs, observed, search_top = extracted
     expected, (slope, intercept) = _robust_cuff_baseline(xs, observed)
 
-    # Positive residual means the observed cuff retreats upward from its
-    # expected intact edge. Negative values are harmless downward protrusions.
+    # Positive residual means the cuff retreats upward from the expected edge; negative values are harmless downward protrusions.
     residual = np.maximum(expected - observed, 0.0)
     minimum_depth = max(2.0, MIN_NOTCH_DEPTH_RATIO * gh)
     abnormal = residual >= minimum_depth
@@ -190,15 +182,13 @@ def detect_incomplete_beading(processed, segmentation):
         default=None,
     )
 
-    # Roughness is measured after removing the fitted cuff slope. A few extreme
-    # differences cannot dominate because percentile 80 is used.
+    # Roughness uses percentile 80 of the detrended differences so a few extreme points can't dominate.
     detrended = observed - expected
     differences = np.abs(np.diff(detrended))
     roughness = float(np.percentile(differences, 80)) if differences.size else 0.0
     roughness_ratio = roughness / float(gh)
 
-    # Some incomplete beads are shallow but irregular across much of the cuff
-    # (supplied nitrile sample 1), rather than forming one deep central notch.
+    # Some incomplete beads are shallow but irregular across much of the cuff rather than one deep notch (e.g. nitrile sample 1).
     shallow_abnormal = residual >= SHALLOW_WIDE_DEPTH_RATIO * gh
     shallow_coverage = float(np.count_nonzero(shallow_abnormal) / max(residual.size, 1))
     p90_depth_ratio = float(np.percentile(residual, 90) / float(gh))
@@ -226,8 +216,7 @@ def detect_incomplete_beading(processed, segmentation):
         (abnormal_area_ratio - MIN_ABNORMAL_AREA_RATIO)
         / (STRONG_ABNORMAL_AREA_RATIO - MIN_ABNORMAL_AREA_RATIO), 0.0, 1.0))
 
-    # A local notch is primary evidence; roughness supports shallow jagged cases
-    # such as nitrile sample 1 but cannot trigger detection on its own.
+    # A local notch is the primary evidence; roughness only supports shallow jagged cases, never triggering detection alone.
     score = float(np.clip(
         0.38 * depth_score + 0.27 * span_score
         + 0.20 * area_score + 0.15 * roughness_score,
@@ -251,9 +240,7 @@ def detect_incomplete_beading(processed, segmentation):
     defect_mask = np.zeros_like(mask)
     box = None
     if detected:
-        # Localise the cuff as a semantic region. Estimating the exact missing
-        # background pixels is unstable and previously moved the box onto the
-        # wrist side. Columns reaching the last 12% define the actual cuff span.
+        # Cuff columns are localised as those reaching the last 12% of glove height, since exact missing-pixel estimation is unstable.
         near_bottom = gy + int(round(0.88 * gh))
         reaches_bottom = np.array([
             np.any(mask[near_bottom:gy + gh, x] > 0)

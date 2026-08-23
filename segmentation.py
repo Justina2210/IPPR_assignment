@@ -1,27 +1,6 @@
-"""
-segmentation.py
----------------
-Shared segmentation module for the Glove Defect Detection System.
-
-This module is responsible for separating the glove foreground from the
-background and, when needed, removing forearm regions that were captured
-in the image. The method is adaptive so it can work with different
-photo backgrounds such as turquoise, green, or slightly brighter/darker
-versions with small shadows.
-
-The main output is a binary glove mask where:
-- glove pixels = 255 (white)
-- background = 0 (black)
-- forearm = 0 if reliably removed
-"""
-
 import cv2
 import numpy as np
 
-
-# ============================================================
-# HELPER FUNCTIONS
-# ============================================================
 
 def _as_bgr_image(image):
     """Return a BGR image from either a processed dictionary or a NumPy array."""
@@ -34,41 +13,16 @@ def _as_bgr_image(image):
     return image
 
 
-# ============================================================
-# BACKGROUND ESTIMATION
-# ============================================================
-
 def estimate_background(image):
-    """
-    Estimate the dominant background colour in an adaptive way.
-
-    The method samples the border region of the image because most
-    backgrounds are uniform and appear around the glove edges.
-
-    LAB is used (rather than HSV) because it separates lightness from
-    colour in a way that keeps roughly equal, perceptually meaningful
-    distances between similar hues (e.g. a blue glove against a teal
-    background), which HSV's circular hue channel does not guarantee.
-
-    Parameters
-    ----------
-    image : numpy.ndarray or dict
-        Input image or processed dictionary.
-
-    Returns
-    -------
-    dict
-        "lab": estimated background colour in LAB space, shape (3,).
-    """
+    """Estimate background colour as the median LAB value across the image border (robust to shadows)."""
     bgr = _as_bgr_image(image)
     if bgr is None or bgr.size == 0:
         raise ValueError("Input image is empty or invalid.")
 
+    # LAB, not HSV: keeps hue distances comparable for similar-hue glove/background pairs.
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
     height, width = lab.shape[:2]
 
-    # Sample pixels from the image border. This is usually where the
-    # background is visible, and it is less affected by the glove itself.
     margin = max(10, min(height, width) // 12)
     border_mask = np.zeros((height, width), dtype=np.uint8)
     border_mask[:margin, :] = 1
@@ -80,44 +34,13 @@ def estimate_background(image):
     if border_pixels.size == 0:
         return {"lab": np.array([0.0, 0.0, 0.0], dtype=np.float32)}
 
-    # Use median values across border pixels to be robust to shadows and
-    # small local variations in the background.
     background_lab = np.median(border_pixels.reshape(-1, 3), axis=0)
     return {"lab": background_lab.astype(np.float32)}
 
 
-# ============================================================
-# FOREGROUND MASK CREATION
-# ============================================================
-
 def _otsu_threshold_mask(distance_map, min_threshold=0.0):
-    """
-    Threshold a non-negative distance map using Otsu's method.
-
-    Otsu automatically finds the valley between two populations
-    (background-like vs foreground-like distances) no matter what
-    fraction of the image each one occupies. This replaces a fixed
-    "median + k*std" rule, which becomes unreliable once the glove
-    fills a large part of the frame: mixing foreground and background
-    distances together inflates the standard deviation and can push
-    a fixed-formula threshold above the *entire* foreground cluster
-    (this was the root cause of near-total segmentation failures,
-    e.g. a blue glove on a similarly-hued teal background).
-
-    Parameters
-    ----------
-    distance_map : numpy.ndarray
-        Non-negative float distance values (e.g. colour or brightness
-        distance from the estimated background).
-    min_threshold : float
-        A floor so that near-uniform images (Otsu finds ~0) do not
-        classify background noise as foreground.
-
-    Returns
-    -------
-    numpy.ndarray (bool)
-        True where distance_map is classified as foreground.
-    """
+    """Otsu-threshold a distance map into foreground/background."""
+    # Otsu, not a fixed cutoff: a fixed formula fails once the glove fills most of the frame.
     max_value = float(distance_map.max())
     if max_value <= 1e-6:
         return np.zeros(distance_map.shape, dtype=bool)
@@ -130,35 +53,7 @@ def _otsu_threshold_mask(distance_map, min_threshold=0.0):
 
 
 def create_foreground_mask(image):
-    """
-    Create a rough foreground mask by comparing the image to the
-    estimated background colour.
-
-    The comparison is done in LAB space because it separates lightness
-    from colour, giving more consistent separation than HSV hue for
-    glove/background pairs that share a similar hue family (e.g. blue
-    glove on a teal mat).
-
-    Two independent signals are combined:
-    - Colour distance (a/b channels): catches most colour changes.
-    - Lightness distance (L channel): catches pale/white gloves that
-      barely differ in colour from a bright background but clearly
-      differ in brightness.
-
-    Each signal is thresholded with Otsu's method (see
-    `_otsu_threshold_mask`) rather than a fixed formula, so the split
-    stays reliable whether the glove occupies 10% or 60% of the frame.
-
-    Parameters
-    ----------
-    image : numpy.ndarray or dict
-        Image or processed dictionary.
-
-    Returns
-    -------
-    numpy.ndarray
-        Binary mask with foreground pixels as 255 and background as 0.
-    """
+    """Foreground mask from LAB colour + lightness distance to the estimated background, Otsu-thresholded and OR'd."""
     bgr = _as_bgr_image(image)
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
     bg = estimate_background(bgr)
@@ -169,6 +64,7 @@ def create_foreground_mask(image):
     b_delta = lab[:, :, 2] - bg_lab[2]
     ab_distance = np.sqrt(a_delta ** 2 + b_delta ** 2)
 
+    # Colour distance catches most changes; lightness distance catches pale gloves on bright backgrounds.
     colour_signal = _otsu_threshold_mask(ab_distance, min_threshold=12.0)
     brightness_signal = _otsu_threshold_mask(l_delta, min_threshold=15.0)
 
@@ -177,16 +73,8 @@ def create_foreground_mask(image):
     return foreground
 
 
-# ============================================================
-# MASK CLEANING
-# ============================================================
-
 def clean_mask(mask):
-    """
-    Clean the binary mask using morphological operations.
-
-    This removes small noise while preserving the glove silhouette.
-    """
+    """Morphological open+close to remove small mask noise while keeping the glove silhouette."""
     if mask is None:
         return mask
 
@@ -196,16 +84,8 @@ def clean_mask(mask):
     return cleaned
 
 
-# ============================================================
-# LARGEST COMPONENT
-# ============================================================
-
 def keep_largest_component(mask):
-    """
-    Keep the largest connected component from the binary mask.
-
-    This helps remove isolated background fragments and small noisy blobs.
-    """
+    """Keep only the largest connected component, dropping isolated background fragments."""
     if mask is None:
         return None
 
@@ -227,45 +107,17 @@ def keep_largest_component(mask):
     return filtered
 
 
-# ============================================================
-# HOLE FILLING
-# ============================================================
-
 def fill_holes(mask):
-    """
-    Fill interior holes in the glove silhouette.
-
-    Textured knit gloves and noisy/speckled backgrounds can cause the
-    foreground mask to come out as a "swiss cheese" pattern - a mostly
-    correct silhouette riddled with small internal holes. A glove is a
-    solid object, so any background-coloured pixels found *inside* the
-    outer silhouette are treated as noise and filled in.
-
-    This also indirectly protects cuff detection: those holes reduce
-    the per-row pixel count unevenly, which was previously enough to
-    trigger false "forearm cut" detections on otherwise-good masks.
-
-    Parameters
-    ----------
-    mask : numpy.ndarray
-        Binary mask (0/255).
-
-    Returns
-    -------
-    numpy.ndarray
-        Mask with interior holes filled.
-    """
+    """Flood-fill interior holes in the glove silhouette (fixes knit-texture 'swiss cheese' masks)."""
     if mask is None:
         return mask
 
+    # Also protects cuff detection: holes make per-row pixel counts uneven.
     height, width = mask.shape[:2]
     flood_filled = mask.copy()
     flood_mask = np.zeros((height + 2, width + 2), dtype=np.uint8)
 
-    # Flood-fill the background starting from the corners (0,0). Only
-    # pixels reachable from outside the silhouette without crossing it
-    # get filled with 255 in this working copy; the rest are enclosed
-    # background pixels, i.e. holes.
+    # Flood-fill from the corner; unreached background pixels are holes.
     inverted = cv2.bitwise_not(flood_filled)
     cv2.floodFill(inverted, flood_mask, (0, 0), 0)
 
@@ -273,19 +125,8 @@ def fill_holes(mask):
     return filled
 
 
-# ============================================================
-# CUFF DETECTION / FOREARM REMOVAL
-# ============================================================
-
 def _smooth_edge_safe(values, kernel_size):
-    """
-    Moving average that pads with edge values instead of zeros.
-
-    A zero-padded convolution makes the true image border look like an
-    artificial drop in width, which previously caused false forearm
-    cuts right at the bottom edge of otherwise-good masks. Edge padding
-    avoids that artifact.
-    """
+    """Moving average with edge padding (not zero padding), so the real image border isn't mistaken for a width drop."""
     pad = kernel_size // 2
     padded = np.pad(values, (pad, pad), mode="edge")
     kernel = np.ones(kernel_size, dtype=np.float32) / kernel_size
@@ -293,37 +134,7 @@ def _smooth_edge_safe(values, kernel_size):
 
 
 def _color_confirms_forearm(bgr_image, mask, cuff_y, threshold=15.0):
-    """
-    Confirm a geometric cuff candidate using colour similarity in LAB.
-
-    A forearm (skin) usually looks distinctly different in colour from
-    the glove material, while a glove hem/cuff flare that merely
-    narrows near the bottom of the frame still looks like the *same*
-    material as the rest of the glove. This compares the mean a/b
-    (colour-only, lightness-independent) LAB values of:
-    - a reference band (20%-45% down the glove, clearly glove material)
-    - the candidate region below the detected geometric cuff line
-
-    If the two regions are colour-similar, the geometric cut is treated
-    as a false positive (e.g. hem flare) and rejected.
-
-    Parameters
-    ----------
-    bgr_image : numpy.ndarray
-        BGR image resized to match `mask`'s dimensions.
-    mask : numpy.ndarray
-        Binary glove mask (0/255).
-    cuff_y : int
-        Y coordinate of the candidate geometric cuff line.
-    threshold : float
-        Minimum a/b colour distance required to confirm a forearm.
-
-    Returns
-    -------
-    bool
-        True if the candidate region's colour is distinct enough from
-        the glove material to confirm a real forearm cut.
-    """
+    """Confirm a geometric cuff candidate: distinct LAB colour below the line vs. glove material above it means real forearm/skin."""
     height, width = mask.shape[:2]
     lab = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2LAB).astype(np.float32)
 
@@ -344,43 +155,7 @@ def _color_confirms_forearm(bgr_image, mask, cuff_y, threshold=15.0):
 
 
 def detect_cuff_line(processed, mask):
-    """
-    Detect a cuff line when a forearm is visible.
-
-    This is a conservative, two-stage check: if there is no reliable
-    cuff boundary, the function returns False and the original mask is
-    kept.
-
-    Stage 1 - geometric "plateau" detection:
-    A real forearm exits through the bottom edge of the photo and holds
-    a near-constant width there (a cylindrical arm), unlike the hand or
-    a glove hem, which vary in width. The bottom rows of the mask are
-    checked for a sufficiently long, sufficiently narrow, sufficiently
-    flat plateau of foreground width, then extended upward from that
-    plateau using a fixed reference width.
-
-    Stage 2 - colour confirmation:
-    Because some gloves flare or fray near the hem in a way that can
-    geometrically resemble a plateau, the candidate region is compared
-    in LAB colour space against the glove material higher up. A region
-    that looks like the *same* material (e.g. more of the glove) is
-    rejected; a region that looks distinctly different (e.g. skin under
-    a glove) confirms the cut.
-
-    Parameters
-    ----------
-    processed : dict or None
-        Output of preprocess_image(), used to obtain the BGR image for
-        the colour-confirmation stage. If None or missing 'original',
-        the geometric result is returned without colour confirmation.
-    mask : numpy.ndarray
-        Binary glove mask (0/255).
-
-    Returns
-    -------
-    tuple(bool, int or None)
-        Whether a cuff line was confirmed, and its y-coordinate.
-    """
+    """Detect a forearm cuff line via a geometric width-plateau check confirmed by LAB colour; conservative, returns False if unsure."""
     if mask is None:
         return False, None
 
@@ -392,26 +167,20 @@ def detect_cuff_line(processed, mask):
     if row_counts.max() <= 0:
         return False, None
 
-    # Smooth the row-count profile first. A single noisy row (caused by a
-    # small unfilled hole or jagged edge pixel) can otherwise look exactly
-    # like a sharp "drop" and trigger a false forearm cut on an otherwise
-    # good mask. Edge-safe padding avoids treating the real image border
-    # as an artificial drop.
+    # Smooth first so one noisy row doesn't look like a sharp width drop.
     kernel_size = max(3, (min(height, width) // 100) | 1)  # odd, scales with image
     smoothed = _smooth_edge_safe(row_counts, kernel_size)
     peak = smoothed.max()
     if peak <= 0:
         return False, None
 
-    # A real forearm always exits through the bottom image edge, so
-    # require some real foreground there as a cheap guard.
+    # Guard: a real forearm always exits the bottom edge.
     border_band = smoothed[-max(3, kernel_size):]
     if border_band.max() < max(10, 0.05 * width):
         return False, None
 
     ratio_max = 0.62        # forearm must be visibly narrower than the hand/palm
-    variability_max = 0.05  # forearm width is nearly constant (cylindrical arm);
-                             # a glove hem/cuff flaring toward its edge is not
+    variability_max = 0.05  # forearm width is nearly constant; a glove hem flare is not
     window_frac = 0.12
     window_len = max(15, int(height * window_frac))
     if window_len >= height:
@@ -428,9 +197,7 @@ def detect_cuff_line(processed, mask):
     if (window_std / window_mean) > variability_max:
         return False, None
 
-    # Extend upward from the window using a FIXED reference (the window's
-    # own mean), not an adaptive local mean, so the walk can't drift up a
-    # gradual hand taper.
+    # Extend upward using the window's fixed mean, not local, so it can't drift up a hand taper.
     bottom_start = max(0, int(height * 0.35))
     start = height - window_len
     extend_tol = 0.15
@@ -442,7 +209,6 @@ def detect_cuff_line(processed, mask):
 
     cuff_y = start
 
-    # Stage 2: colour confirmation, when a BGR image is available.
     bgr = None
     if isinstance(processed, dict):
         bgr = processed.get("original")
@@ -461,21 +227,7 @@ def detect_cuff_line(processed, mask):
 
 
 def remove_forearm(mask, cuff_y):
-    """
-    Remove the area below the detected cuff line.
-
-    Parameters
-    ----------
-    mask : numpy.ndarray
-        Binary glove mask.
-    cuff_y : int
-        Y coordinate of the cuff boundary.
-
-    Returns
-    -------
-    numpy.ndarray
-        Mask with area below the cuff removed.
-    """
+    """Zero out the mask below the cuff line."""
     if mask is None or cuff_y is None:
         return mask
 
@@ -488,39 +240,8 @@ def remove_forearm(mask, cuff_y):
     return output
 
 
-# ============================================================
-# MAIN SEGMENTATION
-# ============================================================
-
 def segment_glove(processed):
-    """
-    Run the full shared segmentation pipeline.
-
-    Flow:
-        Preprocessed image
-            ↓
-        Estimate background colour
-            ↓
-        Create foreground mask
-            ↓
-        Morphological cleaning
-            ↓
-        Keep largest component
-            ↓
-        Optional cuff/forearm removal
-            ↓
-        Final glove mask
-
-    Parameters
-    ----------
-    processed : dict
-        Output of preprocess_image() in preprocessing.py.
-
-    Returns
-    -------
-    dict
-        Contains final segmentation results.
-    """
+    """Run the full pipeline: background estimate -> foreground mask -> cleaning -> largest component -> hole fill -> optional forearm removal."""
     if processed is None:
         raise ValueError("Processed image data is required for segmentation.")
 
@@ -553,10 +274,6 @@ def segment_glove(processed):
         "cuff_y": cuff_y,
     }
 
-
-# ============================================================
-# OPTIONAL QUICK TEST
-# ============================================================
 
 def _demo():
     """Small demonstration for local testing."""

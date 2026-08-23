@@ -1,74 +1,28 @@
-"""
-discoloration.py
-----------------
-Revised detector for the "discoloration" defect.
-
-Main idea
----------
-The previous detector used full LAB delta-E at two local-reference scales.
-That made folds, shadows, finger valleys and cuff edges look like colour
-defects because delta-E also includes lightness (L).
-
-This version uses a simpler material-adaptive chromatic strategy:
-
-1. Work only inside the segmented glove mask.
-2. Erode only a small boundary margin to avoid glove/background blending.
-3. Smooth colour channels so fine wrinkles do not dominate.
-4. Automatically choose the colour feature from glove saturation:
-   - High-saturation glove (e.g. blue nitrile):
-       use HSV hue deviation from the glove's robust median hue.
-   - Low-saturation/pale glove (e.g. pale latex):
-       use positive LAB b* shift, which captures the yellow discoloration
-       present in the current dataset while largely ignoring brightness.
-5. Use a robust median + MAD threshold with a minimum floor.
-6. Clean candidates using morphology and connected components.
-7. Score EACH component using:
-       colour strength + affected area + compactness/shape
-   instead of selecting the largest surviving component.
-8. Return only the best-scoring component as the defect mask/bounding box.
-
-This keeps the detector compatible with evaluate.py:
-    detect_discoloration(processed, segmentation) -> dict
-"""
-
 import cv2
 import numpy as np
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
-# Small edge exclusion only for segmentation anti-aliasing/background bleed.
 EDGE_MARGIN_PX = 12
 
-# Smooth broad colour patches while suppressing tiny wrinkle/texture changes.
 GAUSSIAN_SIGMA = 10.0
 
-# Decide which colour model to use automatically.
-# Blue nitrile samples have very high saturation; pale latex samples do not.
+# Nitrile is highly saturated and latex is not, so 120 splits the two colour models.
 SATURATION_MODE_THRESHOLD = 120.0
 
-# Robust threshold settings.
 ROBUST_K = 2.5
 
-# Minimum meaningful chromatic changes.
 NITRILE_MIN_HUE_DEVIATION = 2.5   # OpenCV hue units, range 0-179
 PALE_MIN_B_SHIFT = 4.0             # LAB b* units
 
-# Connected-component filtering.
 MIN_REGION_AREA_PX = 250
 MIN_EXTENT = 0.30
 MAX_ASPECT_RATIO = 4.0
 
-# Values used only to normalise scores.
 NITRILE_REFERENCE_HUE_DEVIATION = 4.5
 PALE_REFERENCE_B_SHIFT = 9.0
 REFERENCE_AREA_FRACTION = 0.03
 
-# Component ranking:
-# shape is deliberately important because the previous false positives
-# were elongated crease/finger-valley regions.
+# Shape is weighted heaviest because past false positives were elongated crease/finger-valley regions.
 COMPONENT_SCORE_WEIGHTS = {
     "strength": 0.35,
     "area": 0.25,
@@ -78,15 +32,8 @@ COMPONENT_SCORE_WEIGHTS = {
 LOCAL_DETECTION_THRESHOLD = 0.50
 
 
-# ============================================================
-# HELPERS
-# ============================================================
-
 def _robust_threshold(values, floor, k=ROBUST_K):
-    """
-    Robust threshold = max(floor, median + k * robust_std),
-    where robust_std is estimated from MAD.
-    """
+    """Robust threshold = max(floor, median + k * MAD-derived std)."""
     values = np.asarray(values, dtype=np.float32)
 
     if values.size == 0:
@@ -100,12 +47,7 @@ def _robust_threshold(values, floor, k=ROBUST_K):
 
 
 def _erode_glove_mask(mask_bool, margin_px=EDGE_MARGIN_PX):
-    """
-    Remove only a shallow glove boundary band.
-
-    This avoids anti-aliased glove/background pixels without removing
-    a large portion of the glove surface.
-    """
+    """Erode a shallow boundary band off the glove mask to avoid anti-aliased edge pixels."""
     mask_u8 = mask_bool.astype(np.uint8) * 255
 
     kernel = cv2.getStructuringElement(
@@ -116,7 +58,6 @@ def _erode_glove_mask(mask_bool, margin_px=EDGE_MARGIN_PX):
     eroded = cv2.erode(mask_u8, kernel)
     interior = eroded > 0
 
-    # Fallback for unusual thin/cropped gloves.
     if not np.any(interior):
         return mask_bool.copy()
 
@@ -124,17 +65,13 @@ def _erode_glove_mask(mask_bool, margin_px=EDGE_MARGIN_PX):
 
 
 def _circular_hue_distance(hue, reference_hue):
-    """
-    Circular absolute hue distance for OpenCV hue values [0, 179].
-    """
+    """Circular absolute hue distance for OpenCV hue values [0, 179]."""
     diff = np.abs(hue - reference_hue)
     return np.minimum(diff, 180.0 - diff)
 
 
 def _clean_binary_mask(mask_bool):
-    """
-    Morphological cleanup before connected-component analysis.
-    """
+    """Morphological open+close cleanup before connected-component analysis."""
     mask_u8 = mask_bool.astype(np.uint8) * 255
 
     open_kernel = cv2.getStructuringElement(
@@ -155,10 +92,7 @@ def _clean_binary_mask(mask_bool):
 
 
 def _component_shape_score(extent, aspect):
-    """
-    Compact blob -> high score.
-    Thin/elongated crease -> lower score.
-    """
+    """Compact blob -> high score; thin/elongated crease -> lower score."""
     aspect_score = min(1.0, 1.8 / max(aspect, 1e-6))
     extent_score = min(1.0, extent / 0.65)
 
@@ -174,13 +108,7 @@ def _find_best_component(
     glove_area,
     reference_strength,
 ):
-    """
-    Filter and rank connected components.
-
-    Unlike the previous implementation, localisation is NOT based on
-    whichever region has the largest area. Each region is independently
-    scored using chromatic strength, affected area and compactness.
-    """
+    """Filter connected components and rank them by chromatic strength, area and compactness (not just largest area)."""
     cleaned = _clean_binary_mask(candidate_bool)
 
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
@@ -268,24 +196,13 @@ def _find_best_component(
     return best, best_mask, components
 
 
-# ============================================================
-# FEATURE MODES
-# ============================================================
-
 def _detect_high_saturation_glove(
     hsv,
     interior_bool,
 ):
-    """
-    High-saturation glove mode (e.g. blue nitrile).
-
-    Detect broad HUE changes instead of brightness changes.
-    This is much less sensitive to shadows and folds than full LAB
-    delta-E.
-    """
+    """High-saturation glove mode (e.g. blue nitrile): HSV hue deviation, less sensitive to shadows/folds than full LAB delta-E."""
     hue = hsv[:, :, 0].astype(np.float32)
 
-    # Broad smoothing suppresses narrow wrinkle/crease colour changes.
     hue_smooth = cv2.GaussianBlur(
         hue,
         (0, 0),
@@ -326,18 +243,7 @@ def _detect_pale_glove(
     lab,
     interior_bool,
 ):
-    """
-    Pale glove mode (e.g. latex in the current dataset).
-
-    The current pale-glove discoloration samples are yellow patches.
-    LAB b* directly measures the blue <-> yellow axis, so a positive
-    b* shift isolates the defect much better than full delta-E and
-    largely ignores lighting/shadow changes.
-
-    This is intentionally documented as a dataset-specific assumption.
-    If future pale-glove discoloration samples use a different colour,
-    this feature should be generalised to chroma-direction analysis.
-    """
+    """Pale glove mode (e.g. latex): positive LAB b* shift (blue<->yellow axis), since current pale-glove samples are yellow patches and this largely ignores lighting - a dataset-specific assumption that would need generalising for other colours."""
     b_channel = lab[:, :, 2].astype(np.float32)
 
     b_smooth = cv2.GaussianBlur(
@@ -351,7 +257,6 @@ def _detect_pale_glove(
         np.median(b_smooth[interior_bool])
     )
 
-    # Positive = more yellow than the glove's dominant colour.
     b_shift = b_smooth - reference_b
 
     threshold = _robust_threshold(
@@ -364,7 +269,6 @@ def _detect_pale_glove(
         & interior_bool
     )
 
-    # Negative shifts are not candidates in this mode.
     anomaly_map = np.maximum(
         b_shift,
         0.0,
@@ -380,23 +284,8 @@ def _detect_pale_glove(
     }
 
 
-# ============================================================
-# MAIN DETECTOR
-# ============================================================
-
 def detect_discoloration(processed: dict, segmentation: dict) -> dict:
-    """
-    Detect a discoloration region on the segmented glove.
-
-    Required evaluate.py contract:
-        defect_name
-        detected
-        detection_score
-        algorithm
-        bounding_box
-        mask
-        measurements
-    """
+    """Detect a discoloration region on the segmented glove; returns a result dict per the detector contract."""
     result = {
         "defect_name": "discoloration",
         "detected": False,
@@ -433,7 +322,6 @@ def detect_discoloration(processed: dict, segmentation: dict) -> dict:
         np.median(hsv[:, :, 1][interior_bool])
     )
 
-    # Automatically choose the chromatic feature that matches the glove.
     if median_saturation >= SATURATION_MODE_THRESHOLD:
         feature = _detect_high_saturation_glove(
             hsv,
@@ -522,10 +410,6 @@ def detect_discoloration(processed: dict, segmentation: dict) -> dict:
 
     return result
 
-
-# ============================================================
-# OPTIONAL QUICK TEST
-# ============================================================
 
 if __name__ == "__main__":
     import os

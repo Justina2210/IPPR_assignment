@@ -1,80 +1,21 @@
-"""
-oversize.py
------------
-Detector for the "oversize" glove defect.
-
-Oversize is different from local defects such as discoloration or plastic
-contamination: the defect affects the glove's overall fit/geometry rather
-than one small patch. Therefore this detector evaluates GLOBAL loose-fit
-evidence from the segmented glove.
-
-Algorithm
----------
-1. Use segmentation["glove_mask"] only.
-2. Measure global silhouette / fit features:
-   - contour concavity (1 - solidity)
-   - contour roughness (perimeter / convex-hull perimeter)
-   - cuff fullness relative to the palm
-   - bounding-box width / height (spread/baggy geometry)
-   - silhouette extent (especially useful for bulky cotton gloves)
-3. For smooth latex/nitrile gloves, also measure loose-fold/wrinkle density
-   using low-frequency grayscale shading residuals.
-4. Automatically choose a cotton-style or smooth-glove scoring model from
-   the glove's texture.
-5. Produce:
-   - detection_score : global oversize confidence
-   - bounding_box    : evidence-region bounding box for the shared evaluator
-   - mask            : interpretable oversize evidence
-                       * smooth gloves: loose folds + palm/cuff measurement lines
-                       * cotton: palm/cuff measurement lines + lower-cuff outline
-
-The full glove bounding box is still stored in measurements['glove_bounding_box'].
-
-Prototype integration
----------------------
-The detector also returns measurements['prototype_details'], a JSON-friendly
-dictionary containing the explanation, legend and display metrics. The GUI
-can render these values beside the output image without writing explanatory
-text permanently onto the image.
-
-Important limitation
---------------------
-No normal/control gloves were supplied when this detector was developed.
-Thresholds were tuned by inspection on the provided oversize samples.
-Therefore the method should be described as a heuristic loose-fit detector,
-not a calibrated physical glove-size measurement. If normal gloves become
-available, the thresholds should be validated against them.
-
-Required shared contract:
-    detect_oversize(processed: dict, segmentation: dict) -> dict
-"""
-
 import cv2
 import numpy as np
 
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
 LOCAL_DETECTION_THRESHOLD = 0.50
 
-# Used only to decide whether strong knit texture is present.
 COTTON_MEDIAN_GRADIENT_THRESHOLD = 12.0
 
-# Smooth-glove fold analysis.
 FOLD_LOCAL_SIGMA = 12.0
 FOLD_DARK_THRESHOLD = 6.0
 FOLD_EDGE_MARGIN_PX = 12
 
-# Explainable overlay geometry.
 MEASUREMENT_LINE_THICKNESS = 5
 PALM_MEASUREMENT_FRACTION = 0.60
 CUFF_MEASUREMENT_FRACTION = 0.84
 COTTON_LOWER_BOUNDARY_START = 0.70
 
-# Score normalization ranges.
-# These were selected by inspection of the supplied oversize samples.
+# Score normalization ranges were selected by inspecting the supplied oversize samples.
 SOLIDITY_HIGH = 0.88
 SOLIDITY_RANGE = 0.20
 
@@ -93,10 +34,6 @@ SPREAD_RATIO_RANGE = 0.45
 COTTON_EXTENT_LOW = 0.55
 COTTON_EXTENT_RANGE = 0.16
 
-
-# ============================================================
-# HELPERS
-# ============================================================
 
 def _clip01(value):
     return float(np.clip(value, 0.0, 1.0))
@@ -139,9 +76,7 @@ def _safe_mean(values):
 
 
 def _extract_geometry(mask_bool):
-    """
-    Extract global geometry / fit measurements from the glove silhouette.
-    """
+    """Extract global geometry / fit measurements from the glove silhouette."""
     contour = _largest_contour(mask_bool)
 
     if contour is None:
@@ -174,8 +109,6 @@ def _extract_geometry(mask_bool):
 
     width_height_ratio = float(w / max(h, 1))
 
-    # Row-width measurements are made relative to the glove's own height,
-    # so they are independent of absolute image scale.
     row_counts = _row_width_profile(mask_bool)
 
     y0 = y
@@ -214,9 +147,7 @@ def _extract_geometry(mask_bool):
 
 
 def _infer_texture_mode(processed, mask_bool):
-    """
-    Cotton knit has much stronger fine gradients than smooth latex/nitrile.
-    """
+    """Cotton knit has much stronger fine gradients than smooth latex/nitrile."""
     gray = processed["gray"].astype(np.float32)
 
     gx = cv2.Sobel(
@@ -250,13 +181,7 @@ def _infer_texture_mode(processed, mask_bool):
 
 
 def _smooth_glove_fold_evidence(processed, mask_bool):
-    """
-    Detect broad dark fold/shadow evidence inside smooth gloves.
-
-    A large Gaussian reference removes the glove's slow illumination
-    gradient. Pixels substantially darker than their local reference are
-    treated as fold/wrinkle evidence.
-    """
+    """Detect fold/shadow evidence: a large Gaussian reference removes the glove's slow illumination gradient, and pixels substantially darker than that reference are fold/wrinkle evidence."""
     gray = processed["gray"].astype(np.float32)
 
     local_reference = cv2.GaussianBlur(
@@ -292,7 +217,6 @@ def _smooth_glove_fold_evidence(processed, mask_bool):
         & interior
     )
 
-    # Remove tiny isolated texture points while retaining real fold lines.
     fold_mask = fold_bool.astype(np.uint8) * 255
 
     fold_mask = cv2.morphologyEx(
@@ -327,10 +251,7 @@ def _smooth_glove_fold_evidence(processed, mask_bool):
 
 
 def _boundary_evidence(mask_bool, thickness=6):
-    """
-    Create a thin inside-glove boundary band for visualizing that oversize
-    is a global silhouette/fit defect rather than a small local patch.
-    """
+    """Create a thin inside-glove boundary band, for visualizing oversize as a global silhouette/fit defect rather than a local patch."""
     mask_u8 = mask_bool.astype(np.uint8) * 255
 
     eroded = cv2.erode(
@@ -346,9 +267,7 @@ def _boundary_evidence(mask_bool, thickness=6):
 
 
 def _row_span(mask_bool, row_y):
-    """
-    Return the left/right foreground coordinates on one glove row.
-    """
+    """Return the left/right foreground coordinates on one glove row."""
     height, width = mask_bool.shape[:2]
 
     row_y = int(np.clip(row_y, 0, height - 1))
@@ -365,9 +284,7 @@ def _row_span(mask_bool, row_y):
 
 
 def _find_nearest_valid_row(mask_bool, target_y, search_radius=30):
-    """
-    Find the closest row to target_y that still contains glove pixels.
-    """
+    """Find the closest row to target_y that still contains glove pixels."""
     height = mask_bool.shape[0]
 
     target_y = int(np.clip(target_y, 0, height - 1))
@@ -388,12 +305,7 @@ def _find_nearest_valid_row(mask_bool, target_y, search_radius=30):
 
 
 def _measurement_rows(mask_bool, glove_bbox):
-    """
-    Locate explainable palm and cuff measurement rows.
-
-    These are NOT hidden-hand boundaries. They are simply two horizontal
-    cross-sections of the segmented glove used to explain oversize geometry.
-    """
+    """Locate palm and cuff measurement rows - not hidden-hand boundaries, just two horizontal cross-sections used to explain oversize geometry."""
     x, y, w, h = glove_bbox
 
     palm_target = int(y + PALM_MEASUREMENT_FRACTION * h)
@@ -418,9 +330,7 @@ def _measurement_rows(mask_bool, glove_bbox):
 
 
 def _draw_measurement_line(mask, row_y, span, thickness=MEASUREMENT_LINE_THICKNESS):
-    """
-    Draw one horizontal evidence line only over foreground glove pixels.
-    """
+    """Draw one horizontal evidence line only over foreground glove pixels."""
     if row_y is None or span is None:
         return
 
@@ -434,9 +344,7 @@ def _draw_measurement_line(mask, row_y, span, thickness=MEASUREMENT_LINE_THICKNE
 
 
 def _measurement_evidence_mask(mask_bool, glove_bbox):
-    """
-    Create palm/cuff measurement lines and return their coordinates.
-    """
+    """Create palm/cuff measurement lines and return their coordinates."""
     evidence = np.zeros(
         mask_bool.shape,
         dtype=np.uint8,
@@ -459,17 +367,13 @@ def _measurement_evidence_mask(mask_bool, glove_bbox):
         rows["cuff_span"],
     )
 
-    # Restrict every drawn line to the segmented glove.
     evidence[~mask_bool] = 0
 
     return evidence, rows
 
 
 def _cotton_lower_boundary_evidence(mask_bool, glove_bbox, thickness=6):
-    """
-    Cotton wrinkle texture is naturally strong, so visualize the lower
-    silhouette/cuff region instead of highlighting knit texture everywhere.
-    """
+    """Cotton wrinkle texture is naturally strong, so visualize the lower silhouette/cuff region instead of knit texture everywhere."""
     boundary = _boundary_evidence(
         mask_bool,
         thickness=thickness,
@@ -498,9 +402,7 @@ def _cotton_lower_boundary_evidence(mask_bool, glove_bbox, thickness=6):
 
 
 def _line_tuple(row_y, span):
-    """
-    Convert a row/span to a JSON/CSV-friendly tuple.
-    """
+    """Convert a row/span to a JSON/CSV-friendly tuple."""
     if row_y is None or span is None:
         return None
 
@@ -574,13 +476,7 @@ def _build_prototype_details(
     geometry,
     fold_density,
 ):
-    """
-    Build JSON-friendly presentation data for the prototype.
-
-    This function does NOT affect the detector score. It only converts
-    measurements that were already calculated into labels, metrics,
-    legend items and a short explanation for the GUI.
-    """
+    """Convert already-computed measurements into GUI labels/metrics/legend/explanation data; does not affect the detector score."""
     cuff_palm_ratio = (
         round(float(cuff_width) / float(palm_width), 3)
         if palm_width not in (None, 0) and cuff_width is not None
@@ -684,29 +580,11 @@ def _build_prototype_details(
     }
 
 
-# ============================================================
-# MAIN DETECTOR
-# ============================================================
-
 def detect_oversize(
     processed: dict,
     segmentation: dict,
 ) -> dict:
-    """
-    Detect an oversized / loose-fitting glove.
-
-    Oversize is a global fit defect, but the returned mask is designed to
-    explain the decision visually rather than simply highlighting the whole
-    glove outline.
-
-    Smooth latex/nitrile:
-      - highlight loose-fold evidence
-      - draw palm/cuff measurement cross-sections
-
-    Cotton:
-      - draw palm/cuff measurement cross-sections
-      - highlight only the lower/cuff silhouette region
-    """
+    """Detect an oversized/loose-fitting glove; the mask visually explains the decision (loose folds + palm/cuff cross-sections for smooth gloves, cuff geometry + lower silhouette for cotton) rather than just outlining the glove."""
     result = {
         "defect_name": "oversize",
         "detected": False,
@@ -776,9 +654,7 @@ def detect_oversize(
             / FOLD_DENSITY_RANGE
         )
 
-        # Smooth latex/nitrile:
-        # folds carry the most weight, but geometry is still required so
-        # ordinary texture alone cannot dominate the decision.
+        # Folds carry the most weight for smooth latex/nitrile, but geometry is still required so texture alone can't dominate.
         base_geometry_fold_score = (
             0.38 * fold_score
             + 0.22 * subscores["concavity_score"]
@@ -787,10 +663,7 @@ def detect_oversize(
             + 0.08 * subscores["spread_score"]
         )
 
-        # A second loose-fit path is useful for upright gloves where the
-        # silhouette itself is not strongly concave/spread, but the glove
-        # is visibly bulky and contains many broad folds. This avoids
-        # under-scoring samples such as a straight, oversized latex glove.
+        # Second path for upright gloves that are visibly bulky with many folds but not strongly concave/spread, so a straight oversized latex glove isn't under-scored.
         fold_bulk_score = (
             0.55 * fold_score
             + 0.45 * subscores["bulky_extent_score"]
@@ -801,17 +674,13 @@ def detect_oversize(
             fold_bulk_score,
         )
 
-        # Explainable output:
-        #   yellow fold pixels = loose/excess material evidence
-        #   horizontal yellow lines = palm/cuff geometry measurements
         evidence_mask = cv2.bitwise_or(
             fold_mask,
             measurement_mask,
         )
 
     else:
-        # Cotton knit texture makes wrinkle counting unreliable.
-        # Use shape/fullness features instead.
+        # Cotton knit texture makes wrinkle counting unreliable, so shape/fullness features are used instead.
         detection_score = (
             0.25 * subscores["concavity_score"]
             + 0.22 * subscores["cuff_fullness_score"]
@@ -828,9 +697,6 @@ def detect_oversize(
             )
         )
 
-        # Cotton already has strong knit texture, so do not highlight
-        # wrinkle-like texture. Show the two geometry cross-sections and
-        # the lower/cuff silhouette that contributes to cuff-fullness.
         evidence_mask = cv2.bitwise_or(
             measurement_mask,
             cotton_lower_boundary,
@@ -851,10 +717,7 @@ def detect_oversize(
 
     result["detection_score"] = detection_score
 
-    # The shared evaluator always draws a rectangular bounding box.
-    # To avoid a meaningless giant box around the entire glove, return a
-    # box around the EXPLAINABLE EVIDENCE region. The complete glove box
-    # remains available in measurements["glove_bounding_box"].
+    # Bounding box covers the evidence region, not the whole glove; the full glove box is kept in measurements.
     evidence_bbox = _bbox_from_mask(
         evidence_mask > 0
     )
@@ -1000,10 +863,6 @@ def detect_oversize(
 
     return result
 
-
-# ============================================================
-# OPTIONAL QUICK TEST
-# ============================================================
 
 if __name__ == "__main__":
     import os

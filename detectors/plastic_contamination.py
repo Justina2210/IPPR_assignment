@@ -1,56 +1,14 @@
-"""
-plastic_contamination.py
-------------------------
-Version 4 detector for the "plastic_contamination" defect.
-
-V4 fixes three localisation problems found during visual review:
-
-1. Cotton:
-   The old heat-map could frame the correct neighbourhood while colouring
-   pixels beside the transparent plastic. V4 still uses the cotton heat-map
-   for coarse localisation, but the final object mask is recovered from a
-   local combination of knit-gradient suppression, LAB b* shift, heat support
-   and distance to the coarse peak.
-
-2. Latex:
-   A narrow glove crease could score more strongly than the real transparent
-   plastic. V4 performs multi-channel edge grouping in a local search region
-   and ranks compact components by area, edge density, shape and proximity.
-
-3. Nitrile:
-   The strongest reflective pixels represented only a small part of a larger
-   plastic piece. V4 keeps the high-confidence plastic evidence as a seed,
-   then grows object completion only through nearby multi-channel edges before
-   filling the resulting contour.
-
-The detector remains compatible with evaluate.py:
-
-    detect_plastic_contamination(processed: dict,
-                                 segmentation: dict) -> dict
-
-No preprocessing or segmentation logic is reimplemented here.
-"""
-
 import cv2
 import numpy as np
 
 
-# ============================================================
-# GENERAL CONFIGURATION
-# ============================================================
-
 LOCAL_REFERENCE_KERNEL = 121
 
-# Automatic material-mode selection.
 NITRILE_SATURATION_THRESHOLD = 120.0
 COTTON_GRADIENT_THRESHOLD = 12.0
 
 LOCAL_DETECTION_THRESHOLD = 0.50
 
-
-# ============================================================
-# NITRILE / LATEX CONFIGURATION
-# ============================================================
 
 NITRILE_EDGE_MARGIN_PX = 5
 LATEX_EDGE_MARGIN_PX = 3
@@ -74,16 +32,11 @@ MIN_REGION_EXTENT = 0.20
 MAX_REGION_ASPECT_RATIO = 4.0
 
 
-# ============================================================
-# COTTON CONFIGURATION
-# ============================================================
-
 COTTON_WINDOW_SIZES = (50, 70, 90)
 COTTON_WINDOW_STEP = 8
 COTTON_RING_SCALE = 1.8
 
-# Dataset-specific prior: current cotton plastic samples lie on the hand
-# / palm part rather than the fingertips or cuff.
+# Dataset-specific prior: current cotton plastic samples lie on the palm, not the fingertips or cuff.
 COTTON_PALM_Y_MIN = 0.40
 COTTON_PALM_Y_MAX = 0.72
 
@@ -96,14 +49,12 @@ COTTON_MAX_CHROMA_SHIFT = 6.0
 
 COTTON_ROUGH_TEXTURE_THRESHOLD = 28.0
 
-# Coarse heat-map stage.
 COTTON_HEAT_MIN_SCORE = 0.78
 COTTON_HEAT_RELATIVE_SCORE = 0.80
 COTTON_HEAT_SIGMA = 18.0
 COTTON_LOCALISATION_SIDE = 120
 COTTON_HEAT_MASK_RATIO = 0.55
 
-# New refinement stage for cotton.
 COTTON_REFINE_EXPAND_PX = 70
 COTTON_REFINE_LOCAL_KERNEL = 41
 COTTON_REFINE_PROX_SIGMA = 42.0
@@ -116,25 +67,17 @@ COTTON_REFINE_GROW_RELAX = 0.58
 COTTON_REFINE_GROW_DILATE = 9
 
 
-
-# ============================================================
-# V4 OBJECT-COMPLETION CONFIGURATION
-# ============================================================
-
 SMOOTH_EDGE_CANNY_LOW = 20
 SMOOTH_EDGE_CANNY_HIGH = 60
 SMOOTH_EDGE_CLOSE_PX = 11
 
-# Nitrile: complete the object only through edges reasonably close to
-# the original high-confidence seed so unrelated glove creases do not join.
+# Nitrile object completion only follows edges close to the high-confidence seed so unrelated glove creases can't join in.
 NITRILE_COMPLETION_MAX_EDGE_DISTANCE = 45
 
-# Latex: search locally around the original candidate but allow a nearby,
-# more compact component to replace it (needed for Latex Plastic 2).
+# Latex object completion searches locally but allows a nearby, more compact component to replace the seed (needed for Latex Plastic 2).
 LATEX_COMPLETION_MIN_BBOX_AREA = 700
 LATEX_COMPLETION_MAX_ASPECT = 3.3
 
-# Cotton direct refinement after the coarse heat-map stage.
 COTTON_V4_ROI_SIDE = 190
 COTTON_V4_GRADIENT_WEIGHT = 0.40
 COTTON_V4_BSHIFT_WEIGHT = 0.30
@@ -143,9 +86,6 @@ COTTON_V4_PROXIMITY_WEIGHT = 0.10
 COTTON_V4_SCORE_FLOOR = 0.55
 COTTON_V4_MIN_COMPONENT_AREA = 100
 
-# ============================================================
-# SHARED HELPERS
-# ============================================================
 
 def _masked_box_mean(channel, mask_bool, kernel_size=LOCAL_REFERENCE_KERNEL):
     mask_f = mask_bool.astype(np.float32)
@@ -230,10 +170,7 @@ def _bbox_expand(bbox, image_shape, expand_px):
 
 
 def _normalize_map(values_map, valid_bool):
-    """
-    Robustly normalize a map to [0, 1] using the 5th-95th percentile
-    spread over valid pixels. This avoids one extreme pixel dominating.
-    """
+    """Robustly normalize a map to [0, 1] using the 5th-95th percentile spread over valid pixels, so one extreme pixel can't dominate."""
     values = values_map[valid_bool]
 
     if values.size == 0:
@@ -272,9 +209,7 @@ def _structure_coherence(gray, kernel_size=15):
 
 
 def _infer_material_mode(processed, segmentation):
-    """
-    Choose the detector mode only, not a general material classifier.
-    """
+    """Choose the detector mode only, not a general material classifier."""
     mask_bool = segmentation["glove_mask"] > 0
 
     hsv = processed["hsv"].astype(np.float32)
@@ -360,10 +295,6 @@ def _build_local_anomaly_maps(processed, segmentation):
     }
 
 
-# ============================================================
-# NITRILE / LATEX COMPONENT ANALYSIS
-# ============================================================
-
 def _component_shape_score(extent, aspect_ratio):
     extent_score = min(1.0, extent / 0.55)
     aspect_score = min(1.0, 2.0 / max(aspect_ratio, 1e-6))
@@ -371,10 +302,7 @@ def _component_shape_score(extent, aspect_ratio):
 
 
 def _rank_components(candidate_bool, maps, glove_area, mode):
-    """
-    Rank nitrile / latex candidates by shape + anomaly strength + area +
-    a simple material-specific saturation prior.
-    """
+    """Rank nitrile/latex candidates by shape + anomaly strength + area + a material-specific saturation prior."""
     mask_u8 = candidate_bool.astype(np.uint8) * 255
 
     if mode == "nitrile":
@@ -559,14 +487,8 @@ def _rank_components(candidate_bool, maps, glove_area, mode):
     return best, best_mask, components
 
 
-
 def _combined_colour_edges(processed, valid_bool):
-    """
-    Multi-channel edge map used for object completion.
-
-    Transparent plastic may be weak in grayscale but strong in saturation
-    or LAB channels, so edges are OR-combined across several representations.
-    """
+    """Multi-channel edge map for object completion: transparent plastic may be weak in grayscale but strong in saturation/LAB, so edges are OR-combined across channels."""
     gray = processed["gray"]
     hsv = processed["hsv"]
     lab = processed["lab"]
@@ -599,9 +521,7 @@ def _combined_colour_edges(processed, valid_bool):
 
 
 def _fill_external_component(component_mask, glove_bool):
-    """
-    Fill the outer contour of one selected edge/evidence component.
-    """
+    """Fill the outer contour of one selected edge/evidence component."""
     contours, _ = cv2.findContours(
         component_mask,
         cv2.RETR_EXTERNAL,
@@ -626,14 +546,7 @@ def _fill_external_component(component_mask, glove_bool):
 
 
 def _complete_nitrile_object(processed, segmentation, seed_mask):
-    """
-    Complete a larger transparent plastic object from the original
-    high-confidence nitrile evidence.
-
-    Only edge pixels within a limited distance of the seed are eligible.
-    This recovers the rest of the plastic while preventing distant glove
-    creases from stretching the final contour.
-    """
+    """Complete a larger plastic object from the high-confidence nitrile seed; only edges within a limited distance of the seed are eligible, so distant glove creases can't stretch the contour."""
     if seed_mask is None or not np.any(seed_mask):
         return None
 
@@ -710,13 +623,7 @@ def _complete_nitrile_object(processed, segmentation, seed_mask):
 
 
 def _complete_latex_object(processed, segmentation, seed_bbox):
-    """
-    Replace a latex crease false-positive with a nearby compact plastic
-    edge cluster when such a cluster is stronger geometrically.
-
-    The local search radius is tied to the original candidate size, so
-    the method remains local rather than scanning the whole glove.
-    """
+    """Replace a latex crease false-positive with a nearby compact plastic edge cluster when it scores better geometrically; search radius scales with the seed size to stay local."""
     if seed_bbox is None:
         return None
 
@@ -743,7 +650,6 @@ def _complete_latex_object(processed, segmentation, seed_bbox):
         <= radius ** 2
     )
 
-    # Remove only a tiny outer boundary band.
     interior = cv2.erode(
         glove_bool.astype(np.uint8) * 255,
         cv2.getStructuringElement(
@@ -876,7 +782,6 @@ def _complete_latex_object(processed, segmentation, seed_bbox):
         component_mask,
         glove_bool,
     )
-
 
 
 def _detect_nitrile(processed, segmentation):
@@ -1017,10 +922,6 @@ def _detect_latex(processed, segmentation):
     return best, seed_mask, components, thresholds
 
 
-# ============================================================
-# COTTON WINDOW / HEAT-MAP ANALYSIS
-# ============================================================
-
 def _integral(image):
     return cv2.integral(image.astype(np.float32))
 
@@ -1039,10 +940,7 @@ def _rect_mean(integral_image, x, y, w, h):
 
 
 def _cotton_candidate_windows(processed, segmentation):
-    """
-    Stage 1 (coarse): find likely cotton-plastic windows by comparing each
-    local patch with its surrounding ring.
-    """
+    """Stage 1 (coarse): find likely cotton-plastic windows by comparing each local patch with its surrounding ring."""
     mask_bool = segmentation["glove_mask"] > 0
 
     gray = processed["gray"].astype(np.float32)
@@ -1242,16 +1140,8 @@ def _add_window_to_difference_map(difference_map, x, y, w, h, value):
     difference_map[y + h, x + w] += value
 
 
-
 def _cotton_v4_localise(processed, segmentation, heat, peak_x, peak_y):
-    """
-    Direct cotton object localisation.
-
-    Transparent plastic consistently reduces the regular knit-gradient
-    strength in the supplied cotton samples and shifts LAB b* slightly
-    toward yellow. Those two object cues are combined with the coarse
-    heat-map and peak proximity.
-    """
+    """Direct cotton localisation: in these samples plastic reduces knit-gradient strength and shifts LAB b* toward yellow, combined here with the coarse heat-map and peak proximity."""
     glove_bool = segmentation["glove_mask"] > 0
     height, width = glove_bool.shape
 
@@ -1468,7 +1358,6 @@ def _cotton_v4_localise(processed, segmentation, heat, peak_x, peak_y):
         labels == best["label"]
     ] = 255
 
-    # Fill small holes in the selected contamination region.
     final_mask = _fill_external_component(
         final_mask,
         glove_bool,
@@ -1488,11 +1377,7 @@ def _cotton_v4_localise(processed, segmentation, heat, peak_x, peak_y):
 
 
 def _detect_cotton(processed, segmentation):
-    """
-    Cotton V4:
-      1) existing window/ring analysis supplies a coarse heat-map;
-      2) direct local object cues recover the actual plastic region.
-    """
+    """Coarse window/ring heat-map, then direct local object cues recover the actual plastic region."""
     candidates, median_gradient, texture_mode = _cotton_candidate_windows(
         processed,
         segmentation,
@@ -1574,8 +1459,7 @@ def _detect_cotton(processed, segmentation):
         }
 
     best = {
-        # Keep the detection confidence from the strong coarse evidence.
-        # This is confidence, not IoU/localisation accuracy.
+        # Confidence is kept from the strong coarse evidence; this is confidence, not IoU/localisation accuracy.
         "score": max(
             best_window_score,
             refined["score"],
@@ -1602,12 +1486,6 @@ def _detect_cotton(processed, segmentation):
 
     return best, defect_mask, selected, metadata
 
-
-
-
-# ============================================================
-# MAIN DETECTOR — REQUIRED BY evaluate.py
-# ============================================================
 
 def detect_plastic_contamination(processed: dict, segmentation: dict) -> dict:
     result = {
@@ -1733,10 +1611,6 @@ def detect_plastic_contamination(processed: dict, segmentation: dict) -> dict:
     result["measurements"] = measurements
     return result
 
-
-# ============================================================
-# OPTIONAL QUICK TEST
-# ============================================================
 
 if __name__ == "__main__":
     import os
